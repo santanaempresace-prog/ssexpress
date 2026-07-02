@@ -728,7 +728,6 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn-blue" onclick="exportarDados()" style="flex:1;">📥 Exportar dados completos</button>
                 <button class="btn-outline" onclick="exportarSoMotoristas()" style="flex:1;">🚛 Exportar só motoristas</button>
-                <button class="btn-outline" onclick="exportarParaClientes()" style="flex:1;">📦 Exportar para portal do cliente</button>
               </div>
               <div id="export-status" style="font-size:12px;color:var(--green);margin-top:10px;min-height:18px;"></div>
             </div>
@@ -1076,7 +1075,7 @@ function filtrarCliente() {
       <td>${d.origem} → ${d.destino}</td>
       <td>${fmtVal(d.valor)}</td>
       <td style="color:var(--text2)">${d.peso||'—'}</td>
-      <td>${badge(d.status)}</td>
+      <td>${badge(d.status)}${d.status==='Entregue'&&d.entregueEm?'<div style="font-size:11px;color:var(--green);margin-top:3px;">✓ '+fmtDateTime(d.entregueEm)+'</div>':''}${d.observacao?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📝 '+d.observacao+'</div>':''}</td>
       <td><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button></td>
     </tr>`).join('');
 }
@@ -1227,9 +1226,10 @@ function renderAdminCtes() {
     const dest='<td>'+d.destino+'</td>';
     const dt='<td style="color:var(--text2);font-size:12px">'+fmtDate(d.dataEmissao)+'</td>';
     const val='<td>'+fmtVal(d.valor)+'</td>';
-    const stSel='<td><select onchange="updateStatus(this)" data-chave="'+d.chave+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;">'+statusOptionsHtml(d.status)+'</select></td>';
+    const stSel='<td><select onchange="updateStatus(this)" data-chave="'+d.chave+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;">'+statusOptionsHtml(d.status)+'</select>'+(d.status==='Entregue'&&d.entregueEm?'<div style="font-size:10px;color:var(--green);margin-top:3px;white-space:nowrap;">✓ '+fmtDateTime(d.entregueEm)+'</div>':'')+'</td>';
     const cli='<td style="font-size:12px">'+(cl?cl.name:'<span style="color:var(--amber)">Sem cliente</span>')+'</td>';
-    const btns='<td style="display:flex;gap:4px;">'+(!cl?'<button class="btn-sm" onclick="openLink(\''+d.chave+'\')">Vincular</button>':'')+'<button class="btn-sm danger" onclick="removeCte(\''+d.chave+'\')">×</button></td>';
+    const obsBtn='<button class="btn-sm" onclick="editObservacao(\''+d.chave+'\')" title="'+(d.observacao?('Observação: '+d.observacao.replace(/"/g,'&quot;')):'Adicionar observação')+'" style="'+(d.observacao?'color:var(--amber);border-color:var(--amber);':'')+'">📝</button>';
+    const btns='<td style="display:flex;gap:4px;">'+obsBtn+(!cl?'<button class="btn-sm" onclick="openLink(\''+d.chave+'\')">Vincular</button>':'')+'<button class="btn-sm danger" onclick="removeCte(\''+d.chave+'\')">×</button></td>';
     return '<tr style="'+bg+'">'+chk+num+nfTd+tom+dest+dt+val+stSel+cli+btns+'</tr>';
   });
   tbody.innerHTML=rows.join('');
@@ -1738,7 +1738,30 @@ function togglePanel(id){const p=document.getElementById(id);if(p)p.style.displa
 function updateStatus(el) {
   const chave=el.dataset.chave, status=el.value;
   const cte=store.ctes.find(function(c){return c.chave===chave;});
-  if(cte){cte.status=status;save();renderAdminStats();renderDash();}
+  if(!cte) return;
+  const prevStatus = cte.status;
+  const now = new Date().toISOString();
+  cte.status = status;
+  cte.statusUpdatedAt = now;
+  if(status === 'Entregue' && prevStatus !== 'Entregue'){ cte.entregueEm = now; }
+
+  const obs = window.prompt('Alterando status para "'+status+'". Deseja adicionar uma observação? (opcional — deixe em branco pra pular)');
+  cte.eventos = cte.eventos || [];
+  const evt = { label: 'Status alterado para "'+status+'"', dhEvento: now, seq:'manual' };
+  if(obs && obs.trim()){ evt.obs = obs.trim(); evt.label += ' — Obs: ' + obs.trim(); cte.observacao = obs.trim(); }
+  cte.eventos.push(evt);
+
+  save();renderAdminStats();renderDash();renderAdminCtes();
+}
+function editObservacao(chave) {
+  const cte = store.ctes.find(function(c){return c.chave===chave;});
+  if(!cte) return;
+  const obs = window.prompt('Observação para o CTe #'+cte.numero+' ('+cte.destino+'):', cte.observacao||'');
+  if(obs === null) return; // cancelado
+  cte.observacao = obs.trim();
+  cte.eventos = cte.eventos || [];
+  cte.eventos.push({ label: obs.trim() ? 'Observação atualizada: '+obs.trim() : 'Observação removida', dhEvento: new Date().toISOString(), seq:'manual', obs: obs.trim() });
+  save(); renderAdminCtes();
 }
 function removeCte(chave) {
   if(!confirm('Excluir este CTe?')) return;
@@ -1863,6 +1886,7 @@ function populateStatusSelects() {
 }
 function fmtVal(v){return 'R$ '+(parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtDate(d){if(!d)return '—';try{const dt=new Date(d);return isNaN(dt)?d.substring(0,10):dt.toLocaleDateString('pt-BR');}catch(e){return d;}}
+function fmtDateTime(d){if(!d)return '—';try{const dt=new Date(d);return isNaN(dt)?d:dt.toLocaleDateString('pt-BR')+' às '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}catch(e){return d;}}
 function fmtCnpj(c){if(!c)return '—';const n=cc(c);if(n.length===14)return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');if(n.length===11)return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');return c;}
 // ─── FORGOT PASSWORD ──────────────────────────────────────────
 function openForgot() {
@@ -2629,35 +2653,6 @@ function doDriverLogin() {
 
 
 // ─── EXPORT / IMPORT ────────────────────────────────────────────
-function exportarParaClientes() {
-  // Export only client users + their CTes + statuses (no driver data, no admin password)
-  var data = {
-    tipo: 'cargotrack-portal-cliente',
-    empresa: (store.empresa && store.empresa.nome) || '',
-    geradoEm: new Date().toISOString(),
-    users: store.users.filter(function(u){ return u.role==='client'; }),
-    clients: store.clients,
-    ctes: store.ctes.map(function(c){
-      // Remove campos internos que o cliente não precisa ver
-      var copy = Object.assign({}, c);
-      delete copy.xmlFile;
-      return copy;
-    }),
-    statuses: store.statuses || [],
-  };
-  var json = JSON.stringify(data, null, 2);
-  var blob = new Blob([json], {type: 'application/json'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  var date = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
-  a.href = url;
-  a.download = 'cargotrack-cliente-' + date + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
-  var el = document.getElementById('export-status');
-  if (el) { el.textContent = '✓ Arquivo gerado! Envie para o cliente carregar no Portal do Cliente.'; }
-}
-
 function exportarDados() {
   var data = JSON.stringify(store, null, 2);
   var blob = new Blob([data], {type: 'application/json'});
