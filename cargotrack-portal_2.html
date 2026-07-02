@@ -1,0 +1,2762 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SS Express — Rastreio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  /* Fundos — escala quente de cinza, não preto puro */
+  --bg:#1c1a1a;
+  --bg2:#242020;
+  --bg3:#2e2a2a;
+  --bg4:#3a3535;
+
+  /* Bordas */
+  --border:rgba(255,255,255,0.09);
+  --border2:rgba(255,255,255,0.16);
+
+  /* Textos — hierarquia clara */
+  --text:#f0eded;
+  --text2:#a09898;
+  --text3:#5a5252;
+
+  /* Acento principal: vermelho queimado, não sangue */
+  --accent:#c0392b;
+  --accent2:#a93226;
+  --accent-soft:rgba(192,57,43,0.15);
+
+  /* Status — harmônicos, saturação moderada */
+  --green:#27ae60;
+  --green-bg:rgba(39,174,96,0.13);
+  --amber:#d4880a;
+  --amber-bg:rgba(212,136,10,0.13);
+  --red:#c0392b;
+  --red-bg:rgba(192,57,43,0.13);
+  --blue:#2471a3;
+  --blue-bg:rgba(36,113,163,0.13);
+
+  --radius:10px;
+  --radius-lg:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+.page{display:none;min-height:100vh;flex-direction:column;}
+.page.active{display:flex;}
+/* LOGIN */
+#page-login{align-items:center;justify-content:center;position:relative;overflow:hidden;}
+#page-login::before{content:'';position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(192,57,43,0.12) 0%,transparent 70%);top:-200px;right:-200px;pointer-events:none;}
+#page-login::after{content:'';position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(192,57,43,0.06) 0%,transparent 70%);bottom:-100px;left:-100px;pointer-events:none;}
+.login-box{background:var(--bg2);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:20px;padding:48px 44px;width:420px;max-width:95vw;position:relative;z-index:1;animation:fadeUp 0.4s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:32px;}
+.logo-icon{width:36px;height:36px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;}
+.logo-icon svg{width:20px;height:20px;}
+.logo-sm{width:28px!important;height:28px!important;border-radius:7px!important;}
+.logo-sm svg{width:15px!important;height:15px!important;}
+.login-logo span,.nav-logo span{font-size:20px;font-weight:600;letter-spacing:-0.3px;}
+.nav-logo span{font-size:17px;}
+.login-box h1{font-size:22px;font-weight:600;margin-bottom:6px;}
+.login-box>p{font-size:14px;color:var(--text2);margin-bottom:28px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;}
+.field input{width:100%;padding:11px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;transition:border-color 0.2s;}
+.field input:focus{outline:none;border-color:var(--accent);}
+.field input::placeholder{color:var(--text3);}
+.btn-primary{width:100%;padding:12px;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;font-size:15px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.2s,transform 0.1s;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-primary:active{transform:scale(0.98);}
+
+.login-error{display:none;color:var(--red);font-size:13px;margin-top:10px;text-align:center;}
+/* TOPNAV */
+.topnav{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:60px;background:var(--bg2);border-bottom:1px solid var(--border);border-top:3px solid var(--accent);flex-shrink:0;}
+.nav-logo{display:flex;align-items:center;gap:10px;}
+.nav-right{display:flex;align-items:center;gap:12px;}
+.nav-user{font-size:13px;color:var(--text2);}
+.nav-user strong{color:var(--text);}
+.btn-logout{padding:7px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;}
+.btn-logout:hover{border-color:var(--border2);color:var(--text);}
+.nav-tabs{display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-shrink:1;min-width:0;scrollbar-width:none;} .nav-tabs::-webkit-scrollbar{display:none;}
+.nav-tab{padding:6px 12px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);border:none;background:transparent;font-family:'DM Sans',sans-serif;transition:all 0.2s;white-space:nowrap;flex-shrink:0;}
+.nav-tab:hover{background:var(--bg3);color:var(--text);}
+.nav-tab.active{background:var(--accent-soft);color:var(--text);border:1px solid rgba(192,57,43,0.25);}
+/* MAIN */
+.main{flex:1;padding:28px;max-width:1280px;width:100%;margin:0 auto;}
+.page-header{margin-bottom:22px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+.page-header h2{font-size:20px;font-weight:600;}
+.page-header p{font-size:14px;color:var(--text2);margin-top:2px;}
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;}
+.slabel{font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text2);margin-bottom:6px;}
+.sval{font-size:24px;font-weight:600;line-height:1;}
+.sval.blue{color:#5dade2;}.sval.green{color:var(--green);}.sval.amber{color:#e6a817;}.sval.red{color:#e74c3c;}
+/* TABLE */
+.table-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;}
+.table-title{font-size:14px;font-weight:500;}
+.search-row{display:flex;gap:8px;flex-wrap:wrap;}
+.search-row input,.search-row select{padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;}
+.search-row input{min-width:180px;}
+.search-row input:focus,.search-row select:focus{outline:none;border-color:var(--accent);}
+.search-row input::placeholder{color:var(--text3);}
+.search-row select option{background:var(--bg3);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{padding:9px 14px;text-align:left;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,245,245,0.03);}
+.mono{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);}
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:500;white-space:nowrap;}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;display:inline-block;}
+.badge-manifestado{background:var(--blue-bg);color:#5dade2;}.badge-manifestado::before{background:#5dade2;}
+.badge-transito{background:var(--amber-bg);color:#e6a817;}.badge-transito::before{background:#e6a817;}
+.badge-entregue{background:var(--green-bg);color:#2ecc71;}.badge-entregue::before{background:#2ecc71;}
+.badge-pendente{background:var(--red-bg);color:#e74c3c;}.badge-pendente::before{background:#e74c3c;}
+.badge-cancelado{background:rgba(120,110,110,0.15);color:#9e9090;}.badge-cancelado::before{background:#9e9090;}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;align-items:center;justify-content:center;padding:16px;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:18px;width:560px;max-width:100%;max-height:90vh;overflow-y:auto;animation:fadeUp 0.25s ease;}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1;}
+.modal-head h3{font-size:16px;font-weight:600;}
+.modal-close{width:28px;height:28px;border-radius:7px;background:var(--bg3);border:none;cursor:pointer;color:var(--text2);font-size:18px;display:flex;align-items:center;justify-content:center;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:20px 22px;}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+.detail-item .di-label{font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:3px;}
+.detail-item .di-val{font-size:13px;font-weight:500;}
+.detail-item.full{grid-column:1/-1;}
+.section-sep{font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text2);margin:16px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.tl-item{display:flex;gap:12px;padding-bottom:14px;position:relative;}
+.tl-item:not(:last-child)::after{content:'';position:absolute;left:6px;top:16px;bottom:0;width:1px;background:var(--border);}
+.tl-dot{width:13px;height:13px;border-radius:50%;flex-shrink:0;margin-top:2px;border:2px solid transparent;}
+.tl-dot.done{background:var(--green);border-color:var(--green);}
+.tl-dot.active{background:transparent;border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,0.2);}
+.tl-dot.pending{background:var(--bg3);border-color:var(--border2);}
+.tl-text p{font-size:13px;font-weight:500;}
+.tl-text span{font-size:11px;color:var(--text2);}
+/* UPLOAD */
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;}
+.upload-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;}
+.upload-zone{border:2px dashed var(--border2);border-radius:var(--radius-lg);padding:28px 20px;text-align:center;cursor:pointer;transition:all 0.2s;position:relative;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:var(--accent-soft);}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-icon{width:40px;height:40px;margin:0 auto 12px;background:var(--bg3);border-radius:10px;display:flex;align-items:center;justify-content:center;}
+.upload-icon svg{width:20px;height:20px;stroke:var(--accent);}
+.upload-title{font-size:14px;font-weight:500;margin-bottom:4px;}
+.upload-sub{font-size:12px;color:var(--text2);}
+.upload-log{margin-top:12px;max-height:200px;overflow-y:auto;}
+.log-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.log-row:last-child{border-bottom:none;}
+.log-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:600;}
+.log-ok{background:var(--green-bg);color:var(--green);}
+.log-err{background:var(--red-bg);color:var(--red);}
+.log-warn{background:var(--amber-bg);color:var(--amber);}
+.log-file{color:var(--text2);font-family:'DM Mono',monospace;flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.log-msg{color:var(--text);flex:1;}
+/* FORMS */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.form-field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:5px;}
+.form-field input,.form-field select{width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;}
+.form-field input:focus,.form-field select:focus{outline:none;border-color:var(--accent);}
+.form-field input::placeholder{color:var(--text3);}
+.btn-sm{padding:5px 12px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;}
+.btn-sm:hover{border-color:var(--border2);color:var(--text);}
+.btn-sm.danger:hover{border-color:var(--red);color:var(--red);}
+.btn-outline{padding:8px 16px;font-size:13px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;}
+.btn-outline:hover{border-color:var(--border2);color:var(--text);}
+.btn-blue{padding:8px 16px;font-size:13px;font-weight:500;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s;}
+.btn-blue:hover{background:var(--accent2);}
+.alert-box{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none;}
+.alert-box.ok{background:var(--green-bg);color:var(--green);display:block;}
+.alert-box.err{background:var(--red-bg);color:var(--red);display:block;}
+.add-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:18px;display:none;}
+.add-panel h3{font-size:14px;font-weight:500;margin-bottom:14px;}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+.empty-row td{text-align:center;padding:40px;color:var(--text2);}
+.info-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;}
+.info-box h4{font-size:13px;font-weight:500;margin-bottom:10px;}
+.info-box p{font-size:13px;color:var(--text2);line-height:1.8;}
+.info-box strong{color:var(--text);}
+/* BULK BAR */
+.bulk-bar{display:none;align-items:center;gap:12px;padding:10px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:14px;flex-wrap:wrap;}
+.bulk-bar.visible{display:flex;}
+.bulk-count{font-size:13px;font-weight:500;color:var(--text);}
+.bulk-count span{color:var(--accent);font-size:15px;}
+.bulk-status-sel{padding:7px 11px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;min-width:180px;}
+.bulk-status-sel:focus{outline:none;border-color:var(--accent);}
+/* CHECKBOX */
+input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;}
+th.col-check,td.col-check{width:36px;text-align:center;padding-left:10px;padding-right:4px;}
+/* STATUS MANAGER */
+.status-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:var(--bg3);}
+.status-item-left{display:flex;align-items:center;gap:10px;}
+.status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.status-name{font-size:13px;font-weight:500;}
+.status-builtin{font-size:11px;color:var(--text2);background:var(--bg2);padding:2px 8px;border-radius:4px;border:1px solid var(--border);}
+.color-pick{width:28px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px;background:transparent;}
+.add-status-row{display:flex;gap:8px;margin-top:12px;align-items:center;}
+.add-status-row input{flex:1;padding:8px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;}
+.add-status-row input::placeholder{color:var(--text3);}
+.add-status-row input:focus{outline:none;border-color:var(--accent);}
+
+/* BULK BAR */
+.bulk-bar{display:none;align-items:center;gap:12px;padding:11px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:14px;flex-wrap:wrap;}
+.bulk-bar.visible{display:flex;}
+.bulk-count{font-size:13px;color:var(--text2);}
+.bulk-count strong{color:var(--text);font-size:15px;}
+.bulk-sel{padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;min-width:200px;}
+.bulk-sel:focus{outline:none;border-color:var(--accent);}
+input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;vertical-align:middle;}
+th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
+/* STATUS MANAGER */
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:500;}
+.status-pill-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.sm-item{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:var(--bg3);}
+.sm-left{display:flex;align-items:center;gap:10px;}
+.sm-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.sm-name{font-size:13px;font-weight:500;}
+.sm-built{font-size:10px;color:var(--text2);background:var(--bg2);padding:2px 7px;border-radius:4px;border:1px solid var(--border);}
+.add-st-row{display:flex;gap:8px;margin-top:14px;align-items:center;}
+.add-st-row input[type=text]{flex:1;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;}
+.add-st-row input[type=text]::placeholder{color:var(--text3);}
+.add-st-row input[type=text]:focus{outline:none;border-color:var(--accent);}
+.quick-btn{padding:6px 14px;font-size:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;}
+.quick-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ═══ MOTORISTA ═══ */
+#page-driver { background: var(--bg); }
+.driver-header { background: var(--accent); padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+.driver-header h1 { font-size: 16px; font-weight: 600; color: #fff; }
+.driver-header button { background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.driver-content { padding: 16px; max-width: 600px; margin: 0 auto; }
+.driver-greeting { font-size: 13px; color: var(--text2); margin-bottom: 16px; }
+.driver-greeting strong { color: var(--text); }
+.driver-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.driver-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+.driver-stat .ds-val { font-size: 22px; font-weight: 600; }
+.driver-stat .ds-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.cte-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; transition: border-color 0.2s; }
+.cte-card.done { border-color: var(--green); opacity: 0.7; }
+.cte-card.done .cte-card-num { color: var(--green); }
+.cte-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+.cte-card-num { font-size: 13px; font-weight: 600; color: var(--accent); font-family: 'DM Mono', monospace; }
+.cte-card-status { font-size: 11px; padding: 3px 10px; border-radius: 999px; font-weight: 500; }
+.cte-card-dest { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.cte-card-sub { font-size: 12px; color: var(--text2); margin-bottom: 12px; }
+.cte-card-actions { display: flex; gap: 8px; }
+.btn-camera { flex: 1; padding: 11px; background: var(--accent); border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-camera:disabled { background: var(--bg3); color: var(--text2); cursor: default; }
+.btn-confirm { flex: 1; padding: 11px; background: var(--green); border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-confirm:disabled { background: var(--bg3); color: var(--text2); cursor: default; }
+.photo-preview { width: 100%; border-radius: 10px; margin-bottom: 10px; max-height: 180px; object-fit: cover; display: none; border: 1px solid var(--border); }
+.photo-preview.show { display: block; }
+.done-badge { display: flex; align-items: center; gap: 6px; color: var(--green); font-size: 13px; font-weight: 500; }
+.driver-empty { text-align: center; padding: 48px 20px; color: var(--text2); }
+.driver-empty .big { font-size: 48px; margin-bottom: 12px; }
+.driver-empty p { font-size: 15px; }
+.filter-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.filter-tab { padding: 7px 16px; border-radius: 20px; font-size: 13px; border: 1px solid var(--border); background: transparent; color: var(--text2); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+.filter-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* mobile input file hidden */
+.hidden-file { display: none; }
+
+/* ═══ ROTEIRIZAÇÃO ═══ */
+.route-bar { background: linear-gradient(135deg, #1a1010 0%, #2a1515 100%); border: 1px solid rgba(204,0,0,0.3); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+.route-bar-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.route-bar-title { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.route-bar-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.3)} }
+.btn-route-all { padding: 8px 16px; background: var(--accent); border: none; border-radius: 20px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.route-stops { display: flex; align-items: center; gap: 0; overflow-x: auto; padding-bottom: 4px; }
+.route-stop { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
+.route-stop-pin { width: 26px; height: 26px; border-radius: 50%; background: var(--bg3); border: 2px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text2); flex-shrink: 0; }
+.route-stop-pin.done { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+.route-stop-pin.next { background: rgba(204,0,0,0.2); border-color: var(--accent); color: var(--accent); }
+.route-stop-line { width: 18px; height: 2px; background: var(--border2); flex-shrink: 0; }
+.route-stop-line.done { background: var(--green); }
+/* Card enhancements */
+.cte-card-order { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cte-card-order.done { background: var(--green); }
+.btn-maps { flex: 0 0 auto; padding: 11px 14px; background: #1a73e8; border: none; border-radius: 10px; color: #fff; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btn-maps:hover { background: #1557b0; }
+.btn-waze { flex: 0 0 auto; padding: 11px 14px; background: #33ccff; border: none; border-radius: 10px; color: #000; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btn-waze:hover { background: #00aadd; }
+.nav-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Admin sort */
+.sort-handle { cursor: grab; color: var(--text2); padding: 0 8px; font-size: 18px; user-select: none; }
+.sort-handle:active { cursor: grabbing; }
+.assign-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.assign-row:last-child { border-bottom: none; }
+.assign-row.dragging { opacity: 0.4; }
+.assign-order-num { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+.btn-auto-route { padding: 8px 16px; background: rgba(204,0,0,0.15); border: 1px solid rgba(204,0,0,0.4); border-radius: 8px; color: var(--accent); font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
+.btn-auto-route:hover { background: rgba(204,0,0,0.25); }
+.addr-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 20px; font-size: 11px; color: var(--text2); }
+.addr-tag.has-addr { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+.addr-tag.no-addr { border-color: var(--amber); color: var(--amber); background: var(--amber-bg); }
+.edit-addr-btn { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 14px; padding: 2px 4px; }
+.edit-addr-btn:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="page-login" class="page active">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="logo-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="20" r="1"/><circle cx="20" cy="20" r="1"/></svg></div>
+      <span>SS Express — Rastreio</span>
+    </div>
+    <h1>Bem-vindo de volta</h1>
+    <p>Acesse o portal de rastreamento das suas cargas</p>
+    <div class="field"><label>Usuário</label><input type="text" id="login-user" placeholder="seu.usuario" /></div>
+    <div class="field"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" /></div>
+    <button class="btn-primary" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="login-error">Usuário ou senha incorretos.</div>
+    <div style="text-align:center;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;">
+      <button onclick="openForgot()" style="background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:underline;text-underline-offset:3px;">Esqueceu sua senha?</button>
+      <span style="color:var(--border2);font-size:13px;">|</span>
+      <button onclick="showDriverLogin()" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;">🚛 Acesso Motorista</button>
+    </div>
+  </div>
+</div>
+
+<!-- DRIVER LOGIN PAGE -->
+<div id="page-driver-login" class="page" style="align-items:center;justify-content:center;background:var(--bg);position:relative;overflow:hidden;">
+  <div style="position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(204,0,0,0.15) 0%,transparent 70%);top:-180px;right:-180px;pointer-events:none;"></div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:36px 28px;width:92%;max-width:380px;position:relative;z-index:1;animation:fadeUp 0.4s ease;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px;">
+      <div style="width:48px;height:48px;background:var(--accent);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">🚛</div>
+      <div>
+        <div style="font-size:18px;font-weight:600;">SS Express</div>
+        <div style="font-size:13px;color:var(--text2);">Portal do Motorista</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Usuário</label>
+      <input type="text" id="drv-login-user" placeholder="seu.usuario" autocomplete="username" style="font-size:16px;" />
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" id="drv-login-pass" placeholder="••••••••" autocomplete="current-password" style="font-size:16px;" onkeydown="if(event.key==='Enter')doDriverLogin()" />
+    </div>
+    <button onclick="doDriverLogin()" style="width:100%;padding:14px;background:var(--accent);border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:4px;">Entrar</button>
+    <div id="drv-login-error" style="display:none;color:var(--red);font-size:13px;margin-top:10px;text-align:center;">Usuário ou senha incorretos.</div>
+    <div style="text-align:center;margin-top:16px;">
+      <button onclick="showPage('page-login')" style="background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">← Voltar ao login principal</button>
+    </div>
+
+    <!-- Import data section -->
+    <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border);">
+      <div style="font-size:12px;color:var(--text2);text-align:center;margin-bottom:10px;">Primeira vez neste dispositivo? Importe os dados do sistema:</div>
+      <label style="display:block;width:100%;padding:11px;background:var(--bg3);border:1px dashed var(--border2);border-radius:10px;color:var(--text2);font-size:13px;text-align:center;cursor:pointer;font-family:'DM Sans',sans-serif;">
+        📥 Importar dados (arquivo .ssexpress)
+        <input type="file" accept=".ssexpress,.json" style="display:none;" onchange="importarDados(this)" />
+      </label>
+      <div id="import-status" style="font-size:12px;text-align:center;margin-top:8px;min-height:18px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CLIENT PAGE -->
+<div id="page-client" class="page">
+  <nav class="topnav">
+    <div class="nav-logo">
+      <div class="logo-icon logo-sm"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="20" r="1"/><circle cx="20" cy="20" r="1"/></svg></div>
+      <span>SS Express — Rastreio</span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-user">Olá, <strong id="client-name-nav">—</strong></span>
+      <button class="btn-logout" onclick="doLogout()">Sair</button>
+    </div>
+  </nav>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h2 id="client-title">Meus CTes</h2>
+        <p id="client-cnpj-label"></p>
+      </div>
+    </div>
+    <div class="stats-grid" id="client-stats"></div>
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-title">Conhecimentos de Transporte</span>
+        <div class="search-row">
+          <input type="text" id="c-busca" placeholder="Número, destino..." oninput="filtrarCliente()" />
+          <select id="c-status" onchange="filtrarCliente()">
+            <option value="">Todos os status</option>
+            <option>Manifestado</option><option>Em trânsito</option>
+            <option>Entregue</option><option>Pendente</option><option>Cancelado</option>
+          </select>
+        </div>
+      </div>
+      <table><thead><tr><th>Número</th><th>Emissão</th><th>Origem → Destino</th><th>Valor</th><th>Peso</th><th>Situação</th><th></th></tr></thead>
+      <tbody id="client-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN PAGE -->
+<div id="page-admin" class="page">
+  <nav class="topnav">
+    <div class="nav-logo">
+      <div class="logo-icon logo-sm"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="20" r="1"/><circle cx="20" cy="20" r="1"/></svg></div>
+      <span>SS Express — Rastreio</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="adminTab('dashboard',this)">Dashboard</button>
+      <button class="nav-tab" onclick="adminTab('xml',this)">XML</button>
+      <button class="nav-tab" onclick="adminTab('clientes',this)">Clientes</button>
+      <button class="nav-tab" onclick="adminTab('ctes',this)">CTes</button>
+      <button class="nav-tab" onclick="adminTab('status',this)">Status</button>
+      <button class="nav-tab" onclick="adminTab('motoristas',this)">Motoristas</button>
+      <button class="nav-tab" onclick="adminTab('conta',this)">⚙ Conta</button>
+    </div>
+    <button class="btn-logout" onclick="doLogout()">Sair</button>
+  </nav>
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div class="tab-content active" id="tab-dashboard">
+      <div class="page-header"><div><h2>Visão geral</h2><p>Todos os clientes e cargas</p></div></div>
+      <div class="stats-grid" id="admin-stats"></div>
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-title">CTes recentes</span>
+          <div class="search-row">
+            <select id="dash-fc" onchange="renderDash()"><option value="">Todos os clientes</option></select>
+            <select id="dash-fs" onchange="renderDash()"><option value="">Todos os status</option><option>Manifestado</option><option>Em trânsito</option><option>Entregue</option><option>Pendente</option><option>Cancelado</option></select>
+          </div>
+        </div>
+        <table><thead><tr><th>Número</th><th>Tomador</th><th>Destino</th><th>Emissão</th><th>Valor</th><th>Situação</th><th></th></tr></thead>
+        <tbody id="dash-tbody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- XML -->
+    <div class="tab-content" id="tab-xml">
+      <div class="page-header"><div><h2>Importar XMLs</h2><p>Arraste ou selecione XMLs de CTe e eventos SEFAZ</p></div></div>
+      <div class="upload-grid">
+        <div>
+          <div class="upload-label">XML de CTe / CTeOS</div>
+          <div class="upload-zone" id="zone-cte" ondragover="onDrag(event,'zone-cte')" ondragleave="offDrag('zone-cte')" ondrop="onDrop(event,'cte')">
+            <input type="file" accept=".xml,.zip" multiple onchange="handleFiles(this.files,'cte')" />
+            <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg></div>
+            <div class="upload-title">CTe / CTeOS</div>
+            <div class="upload-sub">Arraste arquivos XML ou ZIP<br>Suporta múltiplos arquivos e pastas zipadas</div>
+          </div>
+          <div class="upload-log" id="log-cte"></div>
+        </div>
+        <div>
+          <div class="upload-label">XML de Evento SEFAZ</div>
+          <div class="upload-zone" id="zone-evt" ondragover="onDrag(event,'zone-evt')" ondragleave="offDrag('zone-evt')" ondrop="onDrop(event,'evento')">
+            <input type="file" accept=".xml,.zip" multiple onchange="handleFiles(this.files,'evento')" />
+            <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="upload-title">Eventos SEFAZ</div>
+            <div class="upload-sub">Cancelamento, entrega, MDF-e<br>Aceita XML ou ZIP — atualiza status automaticamente</div>
+          </div>
+          <div class="upload-log" id="log-evt"></div>
+        </div>
+      </div>
+      <div class="info-box">
+        <h4>Como funciona a importação</h4>
+        <p>
+          <strong>XML de CTe:</strong> Lê número, série, tomador, CNPJ, remetente, destinatário, município de origem/destino, valor, peso e volumes. O CTe é vinculado ao cliente automaticamente pelo <strong>CNPJ do tomador</strong>. Se o CNPJ não estiver cadastrado, o CTe aparece como "sem cliente" e pode ser vinculado manualmente na aba CTes.<br><br>
+          <strong>XML de Evento:</strong> Identifica o tipo do evento — <strong style="color:var(--amber)">MDF-e → Em trânsito</strong>, <strong style="color:var(--green)">Entrega → Entregue</strong>, <strong style="color:#888">Cancelamento → Cancelado</strong>, insucesso → Pendente — e atualiza o status do CTe pela chave de acesso. O histórico completo de eventos fica disponível nos detalhes de cada CTe.
+        </p>
+      </div>
+    </div>
+
+    <!-- CLIENTES -->
+    <div class="tab-content" id="tab-clientes">
+      <div class="page-header">
+        <div><h2>Clientes</h2><p>Gerencie acessos e vínculos por CNPJ</p></div>
+        <button class="btn-blue" onclick="openClientModal()">+ Novo cliente</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-title">Clientes cadastrados</span>
+          <div class="search-row"><input type="text" id="client-busca" placeholder="Buscar empresa ou CNPJ..." oninput="renderClients()" /></div>
+        </div>
+        <table>
+          <thead><tr><th>Empresa</th><th>Nome fantasia</th><th>CNPJ</th><th>Município/UF</th><th>Usuário</th><th>CTes</th><th>Situação RF</th><th>Último acesso</th><th></th></tr></thead>
+          <tbody id="clients-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CTes -->
+    <div class="tab-content" id="tab-ctes">
+      <div class="page-header"><div><h2>Todos os CTes</h2><p>Selecione CTes e atualize status em massa</p></div></div>
+
+      <div class="bulk-bar" id="bulk-bar">
+        <div class="bulk-count">Selecionados: <strong id="bulk-n">0</strong></div>
+        <select class="bulk-sel" id="bulk-status-sel"><option value="">Alterar status para...</option></select>
+        <button class="btn-blue" onclick="applyBulk()" style="padding:7px 18px;font-size:13px;">Aplicar</button>
+        <button class="btn-outline" onclick="clearSel()" style="margin-left:auto;padding:7px 14px;font-size:13px;">Limpar seleção</button>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-title">CTes importados</span>
+          <div class="search-row">
+            <input type="text" id="admin-busca" placeholder="Número, chave, destino..." oninput="renderAdminCtes()" />
+            <select id="admin-fc" onchange="renderAdminCtes()"><option value="">Todos os clientes</option></select>
+            <select id="admin-fs" onchange="renderAdminCtes()"><option value="">Todos os status</option></select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th class="chk"><input type="checkbox" id="chk-all" onchange="toggleAll(this)" /></th>
+              <th>Número</th><th>Tomador / CNPJ</th><th>Destino</th><th>Emissão</th><th>Valor</th><th>Status</th><th>Cliente</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="admin-ctes-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- STATUS TAB -->
+    <div class="tab-content" id="tab-status">
+      <div class="page-header"><div><h2>Gerenciar Status</h2><p>Configure os status disponíveis para os CTes</p></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div>
+          <div class="table-card">
+            <div class="table-header"><span class="table-title">Status cadastrados</span></div>
+            <div style="padding:14px 16px;" id="sm-list"></div>
+          </div>
+          <div class="add-st-row">
+            <input type="color" id="ns-color" value="#3b82f6" style="width:36px;height:36px;border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:2px;background:transparent;flex-shrink:0;" />
+            <input type="text" id="ns-name" placeholder="Nome do novo status..." onkeydown="if(event.key==='Enter')addCustomStatus()" />
+            <button class="btn-blue" onclick="addCustomStatus()" style="white-space:nowrap;">+ Adicionar</button>
+          </div>
+        </div>
+        <div class="info-box" style="align-self:start;">
+          <h4>Atalhos — padrão transportadora</h4>
+          <p style="margin-bottom:12px;">Clique para adicionar rapidamente:</p>
+          <div id="quick-btns" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOTORISTAS TAB -->
+    <div class="tab-content" id="tab-motoristas">
+      <div class="page-header">
+        <div><h2>Motoristas</h2><p>Cadastre motoristas e acompanhe as entregas</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-outline" onclick="exportarSoMotoristas()" title="Gera arquivo para enviar ao celular do motorista">📤 Exportar para celular</button>
+          <button class="btn-blue" onclick="togglePanel('add-driver-panel')">+ Novo motorista</button>
+        </div>
+      </div>
+
+      <div style="background:rgba(204,0,0,0.08);border:1px solid rgba(204,0,0,0.2);border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--text2);line-height:1.6;">
+        <strong style="color:var(--text);">Como o motorista acessa no celular:</strong><br>
+        1. Cadastre o motorista aqui → 2. Clique em <strong style="color:var(--text);">📤 Exportar para celular</strong> → 3. Envie o arquivo <code style="font-family:'DM Mono',monospace;font-size:11px;background:var(--bg3);padding:1px 5px;border-radius:4px;">.ssexpress</code> por WhatsApp → 4. Motorista abre o portal no celular → toca em <strong style="color:var(--text);">🚛 Acesso Motorista</strong> → importa o arquivo → faz login.
+        <div id="export-status" style="color:var(--green);margin-top:6px;min-height:16px;font-weight:500;"></div>
+      </div>
+
+      <div class="add-panel" id="add-driver-panel">
+        <h3>Cadastrar motorista</h3>
+        <div class="alert-box" id="driver-alert"></div>
+        <div class="form-row">
+          <div class="form-field"><label>Nome completo</label><input type="text" id="drv-nome" placeholder="João da Silva" /></div>
+          <div class="form-field"><label>Telefone</label><input type="text" id="drv-tel" placeholder="(11) 99999-9999" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-field"><label>Usuário de acesso</label><input type="text" id="drv-user" placeholder="joao.motorista" /></div>
+          <div class="form-field"><label>Senha</label><input type="text" id="drv-pass" placeholder="mínimo 4 caracteres" /></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <button class="btn-blue" onclick="addDriver()">Salvar</button>
+          <button class="btn-outline" onclick="togglePanel('add-driver-panel')">Cancelar</button>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-bottom:20px;">
+        <div class="table-header"><span class="table-title">Motoristas cadastrados</span></div>
+        <table>
+          <thead><tr><th>Nome</th><th>Telefone</th><th>Usuário</th><th>Entregas hoje</th><th>Total entregues</th><th></th></tr></thead>
+          <tbody id="drivers-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-title">Atribuir CTes ao motorista</span>
+        </div>
+        <div style="padding:16px;">
+          <div class="form-row" style="margin-bottom:12px;">
+            <div class="form-field">
+              <label>Selecionar motorista</label>
+              <select id="assign-driver-sel" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;">
+                <option value="">Selecione o motorista...</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Filtrar CTes por cliente</label>
+              <select id="assign-client-filter" onchange="renderAssignList()" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;">
+                <option value="">Todos os clientes</option>
+              </select>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:10px;">Selecione os CTes com status <strong style="color:var(--text)">Manifestado, Coletado ou Em trânsito</strong> para atribuir ao motorista:</p>
+          <div id="assign-cte-list" style="max-height:260px;overflow-y:auto;"></div>
+          <button class="btn-blue" onclick="assignCtes()" style="margin-top:12px;width:100%;">Atribuir CTes selecionados</button>
+        </div>
+      </div>
+
+      <!-- ROTEIRIZAÇÃO -->
+      <div class="table-card" style="margin-top:20px;">
+        <div class="table-header">
+          <span class="table-title">🗺 Roteiro do dia</span>
+          <div class="search-row">
+            <select id="route-driver-sel" onchange="renderRouteOrder()" style="padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;">
+              <option value="">Selecione o motorista...</option>
+            </select>
+          </div>
+        </div>
+        <div style="padding:16px;">
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Arraste os cards para definir a <strong style="color:var(--text)">ordem das entregas</strong>. O motorista verá esta sequência no celular.</p>
+          <div id="route-order-list"></div>
+          <div id="route-maps-preview" style="margin-top:12px;display:none;">
+            <a id="route-maps-link" href="#" target="_blank" class="btn-blue" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:10px 18px;border-radius:10px;">🗺 Abrir rota completa no Google Maps</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MINHA CONTA TAB -->
+    <div class="tab-content" id="tab-conta">
+      <div class="page-header"><div><h2>Minha Conta</h2><p>Dados do administrador e segurança</p></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+
+        <!-- COLUNA ESQUERDA: Perfil + Senha -->
+        <div>
+          <!-- Dados do admin -->
+          <div class="table-card" style="margin-bottom:18px;">
+            <div class="table-header"><span class="table-title">Meus dados</span></div>
+            <div style="padding:20px;">
+              <div class="alert-box" id="profile-alert"></div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Nome completo</label>
+                <input type="text" id="admin-nome" placeholder="Seu nome" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>E-mail</label>
+                <input type="email" id="admin-email" placeholder="seu@email.com.br" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Telefone / WhatsApp</label>
+                <input type="text" id="admin-tel" placeholder="(11) 99999-9999" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Empresa / Transportadora</label>
+                <input type="text" id="admin-empresa" placeholder="SS Express Transportes" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <div class="form-field" style="margin-bottom:16px;">
+                <label>CNPJ da empresa</label>
+                <input type="text" id="admin-cnpj" placeholder="00.000.000/0001-00" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <button class="btn-blue" onclick="saveAdminProfile()" style="width:100%;">Salvar dados</button>
+            </div>
+          </div>
+
+          <!-- Alterar senha -->
+          <div class="table-card">
+            <div class="table-header"><span class="table-title">Alterar senha</span></div>
+            <div style="padding:20px;">
+              <div class="alert-box" id="pw-alert"></div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Senha atual</label>
+                <input type="password" id="pw-current" placeholder="••••••••" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Nova senha</label>
+                <input type="password" id="pw-new" placeholder="mínimo 4 caracteres" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <div class="form-field" style="margin-bottom:16px;">
+                <label>Confirmar nova senha</label>
+                <input type="password" id="pw-confirm" placeholder="repita a nova senha" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <button class="btn-blue" onclick="changeAdminPassword()" style="width:100%;">Salvar nova senha</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- COLUNA DIREITA: Redefinir senha de cliente -->
+        <div>
+          <div class="table-card">
+            <div class="table-header"><span class="table-title">Redefinir senha de cliente</span></div>
+            <div style="padding:20px;">
+              <p style="font-size:13px;color:var(--text2);margin-bottom:14px;">Use os códigos de recuperação gerados pelos clientes para redefinir a senha deles.</p>
+              <div class="alert-box" id="reset-alert"></div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Código de recuperação</label>
+                <input type="text" id="reset-code" placeholder="ex: AB12CD" oninput="lookupCode()" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;letter-spacing:3px;margin-top:4px;" />
+              </div>
+              <div id="reset-found" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:12px;">
+                <p style="font-size:12px;color:var(--text2);margin-bottom:4px;">Cliente encontrado:</p>
+                <p id="reset-client-name" style="font-size:14px;font-weight:500;"></p>
+                <p id="reset-client-user" style="font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;"></p>
+              </div>
+              <div class="form-field" style="margin-bottom:12px;">
+                <label>Nova senha para o cliente</label>
+                <input type="text" id="reset-newpass" placeholder="mínimo 4 caracteres" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+              </div>
+              <button class="btn-blue" onclick="resetClientPassword()" style="width:100%;">Redefinir senha</button>
+            </div>
+          </div>
+
+          <!-- Info card -->
+          <div class="info-box" style="margin-top:18px;">
+            <h4>Dados usados no sistema</h4>
+            <p>O nome da empresa e CNPJ aparecerão nos documentos e na identificação do portal para seus clientes.</p>
+          </div>
+
+          <div class="table-card" style="margin-top:18px;">
+            <div class="table-header"><span class="table-title">📤 Exportar dados para celular</span></div>
+            <div style="padding:18px;">
+              <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Para o motorista ou cliente acessar no celular, exporte os dados e importe no dispositivo deles.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn-blue" onclick="exportarDados()" style="flex:1;">📥 Exportar dados completos</button>
+                <button class="btn-outline" onclick="exportarSoMotoristas()" style="flex:1;">🚛 Exportar só motoristas</button>
+                <button class="btn-outline" onclick="exportarParaClientes()" style="flex:1;">📦 Exportar para portal do cliente</button>
+              </div>
+              <div id="export-status" style="font-size:12px;color:var(--green);margin-top:10px;min-height:18px;"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FORGOT PASSWORD MODAL -->
+<div class="modal-overlay" id="modal-forgot">
+  <div class="modal" style="width:440px;">
+    <div class="modal-head">
+      <h3>Recuperar senha</h3>
+      <button class="modal-close" onclick="closeModal('modal-forgot')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="forgot-step1">
+        <p style="font-size:13px;color:var(--text2);margin-bottom:18px;">Digite seu usuário ou e-mail cadastrado. Um código de recuperação será gerado para você informar ao administrador.</p>
+        <div class="form-field" style="margin-bottom:14px;">
+          <label>Usuário ou e-mail</label>
+          <input type="text" id="forgot-input" placeholder="ex: transp1 ou email@empresa.com" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+        </div>
+        <div class="alert-box" id="forgot-alert"></div>
+        <button class="btn-blue" onclick="sendRecovery()" style="width:100%;">Buscar conta</button>
+      </div>
+      <div id="forgot-step2" style="display:none;">
+        <div style="text-align:center;padding:8px 0 16px;">
+          <div style="width:52px;height:52px;background:var(--green-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:22px;">✓</div>
+          <p style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:6px;">Conta encontrada</p>
+          <p style="font-size:13px;color:var(--text2);">E-mail vinculado à conta:</p>
+          <p id="forgot-email-show" style="font-size:14px;font-weight:500;color:var(--accent);margin:8px 0 16px;"></p>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:16px;">
+            <p style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:8px;">Código de recuperação</p>
+            <p id="forgot-code" style="font-size:32px;font-weight:600;letter-spacing:8px;color:var(--text);font-family:'DM Mono',monospace;"></p>
+          </div>
+          <p style="font-size:12px;color:var(--text2);">Informe este código ao administrador para que ele redefina sua senha.</p>
+        </div>
+        <button class="btn-outline" onclick="closeModal('modal-forgot')" style="width:100%;margin-top:4px;">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADDRESS EDIT MODAL -->
+<div class="modal-overlay" id="modal-addr">
+  <div class="modal" style="width:480px;">
+    <div class="modal-head">
+      <h3 id="addr-modal-title">Endereço de entrega</h3>
+      <button class="modal-close" onclick="closeModal('modal-addr')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">
+        Endereço extraído do XML do CTe. Edite se precisar corrigir ou complementar para o GPS.
+      </p>
+      <div class="alert-box" id="addr-alert"></div>
+      <div class="form-field" style="margin-bottom:12px;">
+        <label>Destinatário</label>
+        <input type="text" id="addr-nome" readonly style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+      </div>
+      <div class="form-field" style="margin-bottom:12px;">
+        <label>Endereço completo <span style="color:var(--accent);font-size:10px;font-weight:400;">(editável)</span></label>
+        <textarea id="addr-endereco" rows="3" placeholder="Rua, número, bairro, cidade/UF" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;resize:vertical;"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div class="form-field">
+          <label>CEP</label>
+          <input type="text" id="addr-cep" placeholder="00000-000" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+        </div>
+        <div class="form-field">
+          <label>Complemento</label>
+          <input type="text" id="addr-comp" placeholder="Apto, bloco, ref..." style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-blue" onclick="saveDeliveryAddress()" style="flex:1;">Salvar endereço</button>
+        <button class="btn-outline" onclick="closeModal('modal-addr')">Cancelar</button>
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;">Testar navegação com este endereço:</p>
+        <div style="display:flex;gap:8px;">
+          <button onclick="testNavAddr('maps')" style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">🗺 Maps</button>
+          <button onclick="testNavAddr('waze')" style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">📡 Waze</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="modal-detail">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modal-num">CTe —</h3><button class="modal-close" onclick="closeModal('modal-detail')">×</button></div>
+    <div class="modal-body">
+      <div class="detail-grid" id="modal-grid"></div>
+      <div class="section-sep">Histórico de eventos</div>
+      <div id="modal-tl"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CLIENT MODAL -->
+<div class="modal-overlay" id="modal-client">
+  <div class="modal" style="width:580px;">
+    <div class="modal-head">
+      <h3 id="client-modal-title">Novo cliente</h3>
+      <button class="modal-close" onclick="closeModal('modal-client')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert-box" id="client-alert"></div>
+
+      <!-- CNPJ lookup -->
+      <div style="margin-bottom:18px;">
+        <div class="form-field" style="margin-bottom:8px;">
+          <label>CNPJ <span style="color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0">(digite para buscar automaticamente na Receita Federal)</span></label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="f-cnpj" placeholder="00.000.000/0001-00" maxlength="18" oninput="maskCnpj(this)" style="flex:1;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+            <button class="btn-blue" onclick="buscarCnpj()" id="btn-buscar-cnpj" style="white-space:nowrap;padding:9px 16px;">Consultar RF</button>
+          </div>
+        </div>
+        <div id="cnpj-status" style="font-size:12px;color:var(--text2);min-height:18px;"></div>
+      </div>
+
+      <!-- Dados preenchidos pela RF -->
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:18px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:12px;">Dados da Receita Federal</div>
+        <div class="detail-grid" style="margin-bottom:0;">
+          <div class="detail-item full">
+            <div class="di-label">Razão social</div>
+            <input type="text" id="f-nome" placeholder="Preenchido automaticamente" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Nome fantasia</div>
+            <input type="text" id="f-fantasia" placeholder="—" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Situação cadastral</div>
+            <input type="text" id="f-situacao" placeholder="—" readonly style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Município / UF</div>
+            <input type="text" id="f-municipio" placeholder="—" readonly style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label">Telefone</div>
+            <input type="text" id="f-telefone" placeholder="—" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label">E-mail</div>
+            <input type="text" id="f-email" placeholder="—" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label">CEP</div>
+            <input type="text" id="f-cep" placeholder="00000-000" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item full">
+            <div class="di-label">Endereço</div>
+            <input type="text" id="f-endereco" placeholder="Rua, número, bairro..." style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Acesso -->
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:18px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:12px;">Acesso ao portal</div>
+        <div class="detail-grid" style="margin-bottom:0;">
+          <div class="detail-item">
+            <div class="di-label">Usuário</div>
+            <input type="text" id="f-user" placeholder="ex: mauer" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+          <div class="detail-item">
+            <div class="di-label" id="f-senha-label">Senha</div>
+            <input type="text" id="f-senha" placeholder="mínimo 4 caracteres" style="width:100%;padding:8px 10px;font-size:13px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;" />
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="btn-blue" onclick="saveClient()" style="flex:1;">Salvar cliente</button>
+        <button class="btn-outline" onclick="closeModal('modal-client')">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LINK MODAL -->
+<div class="modal-overlay" id="modal-link">
+  <div class="modal" style="width:420px;">
+    <div class="modal-head"><h3>Vincular CTe ao cliente</h3><button class="modal-close" onclick="closeModal('modal-link')">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">CTe <span id="link-num" style="color:var(--text);font-weight:500;"></span> — CNPJ do tomador não encontrado em nenhum cliente cadastrado. Vincule manualmente:</p>
+      <div class="form-field" style="margin-bottom:14px;"><label>Cliente</label><select id="link-select" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;"></select></div>
+      <button class="btn-blue" style="width:100%;" onclick="confirmLink()">Vincular</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ DRIVER PAGE ═══════ -->
+<div id="page-driver" class="page">
+  <div class="driver-header">
+    <h1>📦 SS Express — Entregas</h1>
+    <button onclick="doLogout()">Sair</button>
+  </div>
+  <div class="driver-content">
+    <div class="driver-greeting">Olá, <strong id="driver-name-label">Motorista</strong></div>
+
+    <div class="driver-stats">
+      <div class="driver-stat">
+        <div class="ds-val" id="ds-total">0</div>
+        <div class="ds-lbl">Total</div>
+      </div>
+      <div class="driver-stat">
+        <div class="ds-val" id="ds-done" style="color:var(--green)">0</div>
+        <div class="ds-lbl">Entregues</div>
+      </div>
+      <div class="driver-stat">
+        <div class="ds-val" id="ds-pend" style="color:var(--amber)">0</div>
+        <div class="ds-lbl">Pendentes</div>
+      </div>
+    </div>
+
+    <!-- Rota do dia -->
+    <div class="route-bar" id="route-bar" style="display:none;">
+      <div class="route-bar-top">
+        <div class="route-bar-title"><span class="dot"></span> Rota de hoje</div>
+        <button class="btn-route-all" onclick="openFullRoute()">🗺 Ver rota completa</button>
+      </div>
+      <div class="route-stops" id="route-stops"></div>
+    </div>
+
+    <div class="filter-tabs">
+      <button class="filter-tab active" onclick="setDriverFilter('all',this)">Todos</button>
+      <button class="filter-tab" onclick="setDriverFilter('pending',this)">Pendentes</button>
+      <button class="filter-tab" onclick="setDriverFilter('done',this)">Entregues</button>
+    </div>
+
+    <div id="driver-list"></div>
+  </div>
+
+  <!-- Hidden file inputs for camera per card -->
+  <input type="file" accept="image/*" capture="environment" class="hidden-file" id="cam-input" onchange="handlePhoto(this)" />
+</div>
+
+<script>
+// ─── STORE ───────────────────────────────────────────────────
+const KEY = 'cargotrack_ssexpress_admin_v1';
+function defaultStore() {
+  return {
+    users: [
+      { user:'admin', pass:'admin123', role:'admin', name:'Administrador' },
+    ],
+    clients: [],
+    ctes: [],
+    nextClientId: 2,
+    nextDriverId: 1,
+    statuses: [
+      { name:'Manifestado',         color:'#cc0000', builtIn:true },
+      { name:'Em trânsito',         color:'#f59e0b', builtIn:true },
+      { name:'Coletado',            color:'#8b5cf6', builtIn:true },
+      { name:'No depot',            color:'#06b6d4', builtIn:true },
+      { name:'Saiu para entrega',   color:'#f97316', builtIn:true },
+      { name:'Tentativa de entrega',color:'#ef4444', builtIn:true },
+      { name:'Entregue',            color:'#22c55e', builtIn:true },
+      { name:'Devolvido',           color:'#6b7280', builtIn:true },
+      { name:'Pendente',            color:'#dc2626', builtIn:true },
+      { name:'Cancelado',           color:'#52525b', builtIn:true },
+    ],
+  };
+}
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return defaultStore();
+    const s = JSON.parse(raw);
+    // Ensure admin user always exists
+    if (!s.users) s.users = [];
+    if (!s.users.find(u => u.user === 'admin')) {
+      s.users.unshift({ user:'admin', pass:'admin123', role:'admin', name:'Administrador' });
+    }
+    if (!s.statuses || !s.statuses.length) s.statuses = defaultStore().statuses;
+    if (!s.nextDriverId) s.nextDriverId = 1;
+    return s;
+  } catch(e) { return defaultStore(); }
+}
+
+let store = loadStore();
+let currentUser = null;
+let pendingLink = null;
+
+function save() { localStorage.setItem(KEY, JSON.stringify(store)); }
+function cc(s) { return (s||'').replace(/\D/g,''); }
+
+// ─── AUTH ────────────────────────────────────────────────────
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const found = store.users.find(x => x.user===u && x.pass===p);
+  if (!found) { document.getElementById('login-error').style.display='block'; return; }
+  document.getElementById('login-error').style.display='none';
+  currentUser = found;
+  if (found.role==='client') {
+    const cl = store.clients.find(c=>c.id===found.clientId);
+    if (cl) { cl.lastAccess = new Date().toLocaleString('pt-BR'); save(); }
+    showClientPage();
+  } else if (found.role==='driver') {
+    showDriverPage();
+  } else { showAdminPage(); }
+}
+function doLogout() {
+  currentUser = null;
+  showPage('page-login');
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+}
+function showPage(id) { document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+// ─── CLIENT ──────────────────────────────────────────────────
+function showClientPage() {
+  showPage('page-client');
+  const cl = store.clients.find(c=>c.id===currentUser.clientId);
+  document.getElementById('client-name-nav').textContent = cl ? cl.name.split(' ')[0] : currentUser.name;
+  document.getElementById('client-title').textContent = cl ? cl.name : 'Meus CTes';
+  document.getElementById('client-cnpj-label').textContent = cl ? 'CNPJ: '+fmtCnpj(cl.cnpj) : '';
+  filtrarCliente();
+}
+
+function filtrarCliente() {
+  const cl = store.clients.find(c=>c.id===currentUser.clientId);
+  let ctes = cl ? store.ctes.filter(c=>c.clientId===cl.id || cc(c.tomadorCnpj)===cc(cl.cnpj)) : [];
+  const q = document.getElementById('c-busca').value.toLowerCase();
+  const st = document.getElementById('c-status').value;
+  if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q));
+  if (st) ctes = ctes.filter(d=>d.status===st);
+  renderClientStats(ctes);
+  const tbody = document.getElementById('client-tbody');
+  if (!ctes.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhum CTe encontrado</td></tr>'; return; }
+  tbody.innerHTML = ctes.sort((a,b)=>b.numero-a.numero).map(d=>`
+    <tr>
+      <td><span class="mono">#${d.numero}</span></td>
+      <td style="color:var(--text2)">${fmtDate(d.dataEmissao)}</td>
+      <td>${d.origem} → ${d.destino}</td>
+      <td>${fmtVal(d.valor)}</td>
+      <td style="color:var(--text2)">${d.peso||'—'}</td>
+      <td>${badge(d.status)}</td>
+      <td><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button></td>
+    </tr>`).join('');
+}
+
+function renderClientStats(ctes) {
+  const total = ctes.reduce((s,c)=>s+parseFloat(c.valor||0),0);
+  document.getElementById('client-stats').innerHTML = `
+    <div class="stat-card"><div class="slabel">Total</div><div class="sval blue">${ctes.length}</div></div>
+    <div class="stat-card"><div class="slabel">Manifestados</div><div class="sval">${ctes.filter(c=>c.status==='Manifestado').length}</div></div>
+    <div class="stat-card"><div class="slabel">Em trânsito</div><div class="sval amber">${ctes.filter(c=>c.status==='Em trânsito').length}</div></div>
+    <div class="stat-card"><div class="slabel">Entregues</div><div class="sval green">${ctes.filter(c=>c.status==='Entregue').length}</div></div>
+    <div class="stat-card"><div class="slabel">Valor total</div><div class="sval" style="font-size:15px">${fmtVal(total)}</div></div>`;
+}
+
+// ─── ADMIN ───────────────────────────────────────────────────
+function showAdminPage() {
+  showPage('page-admin');
+  refreshAdmin();
+  if(!store.statuses||!store.statuses.length) store.statuses=[{name:'Manifestado',color:'#cc0000',builtIn:true},{name:'Em trânsito',color:'#f59e0b',builtIn:true},{name:'Entregue',color:'#22c55e',builtIn:true},{name:'Pendente',color:'#dc2626',builtIn:true},{name:'Cancelado',color:'#52525b',builtIn:true},{name:'Coletado',color:'#8b5cf6',builtIn:true},{name:'No depot',color:'#06b6d4',builtIn:true},{name:'Saiu para entrega',color:'#f97316',builtIn:true},{name:'Tentativa de entrega',color:'#ef4444',builtIn:true},{name:'Devolvido',color:'#6b7280',builtIn:true}];
+}
+function refreshAdmin() {
+  renderAdminStats(); renderDash(); renderClients(); renderAdminCtes(); populateSelects(); renderStatusManager();
+}
+function adminTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  populateSelects();
+  if (name==='dashboard') { renderAdminStats(); renderDash(); }
+  if (name==='clientes') renderClients();
+  if (name==='ctes') { renderAdminCtes(); populateStatusSelects(); }
+  if (name==='status') renderStatusManager();
+  if (name==='motoristas') renderDriversTab();
+  if (name==='conta') { loadAdminProfile(); document.getElementById('pw-alert').className='alert-box'; document.getElementById('reset-alert').className='alert-box'; document.getElementById('profile-alert').className='alert-box'; }
+}
+function renderAdminStats() {
+  const a = store.ctes, total = a.reduce((s,c)=>s+parseFloat(c.valor||0),0);
+  document.getElementById('admin-stats').innerHTML = `
+    <div class="stat-card"><div class="slabel">Clientes</div><div class="sval blue">${store.clients.length}</div></div>
+    <div class="stat-card"><div class="slabel">Total CTes</div><div class="sval">${a.length}</div></div>
+    <div class="stat-card"><div class="slabel">Em trânsito</div><div class="sval amber">${a.filter(c=>c.status==='Em trânsito').length}</div></div>
+    <div class="stat-card"><div class="slabel">Entregues</div><div class="sval green">${a.filter(c=>c.status==='Entregue').length}</div></div>
+    <div class="stat-card"><div class="slabel">Pendentes</div><div class="sval red">${a.filter(c=>c.status==='Pendente').length}</div></div>
+    <div class="stat-card"><div class="slabel">Sem cliente</div><div class="sval amber">${a.filter(c=>!c.clientId).length}</div></div>
+    <div class="stat-card"><div class="slabel">Valor total</div><div class="sval" style="font-size:14px">${fmtVal(total)}</div></div>`;
+}
+function renderDash() {
+  const fc=(document.getElementById('dash-fc')||{}).value||'';
+  const fs=(document.getElementById('dash-fs')||{}).value||'';
+  let ctes=[...store.ctes].sort((a,b)=>b.numero-a.numero);
+  if(fc) ctes=ctes.filter(c=>c.clientId==fc);
+  if(fs) ctes=ctes.filter(c=>c.status===fs);
+  const tbody=document.getElementById('dash-tbody');
+  if(!ctes.length){tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhum CTe importado ainda — use a aba "Importar XML"</td></tr>';return;}
+  tbody.innerHTML=ctes.slice(0,60).map(d=>{
+    const cl=store.clients.find(c=>c.id===d.clientId);
+    return `<tr><td><span class="mono">#${d.numero}</span></td><td style="font-size:12px;color:var(--text2);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.tomadorNome||'—'}</td><td>${d.destino}</td><td style="color:var(--text2);font-size:12px">${fmtDate(d.dataEmissao)}</td><td>${fmtVal(d.valor)}</td><td>${badge(d.status)}</td><td><button class="btn-sm" onclick="openDetail('${d.chave}')">Ver</button></td></tr>`;
+  }).join('');
+}
+function renderClients() {
+  const tbody=document.getElementById('clients-tbody');
+  const q=(document.getElementById('client-busca')||{}).value?.toLowerCase()||'';
+  let clients=store.clients;
+  if(q) clients=clients.filter(c=>c.name.toLowerCase().includes(q)||(c.cnpj||'').includes(q)||(c.fantasia||'').toLowerCase().includes(q));
+  if(!clients.length){tbody.innerHTML='<tr class="empty-row"><td colspan="9">Nenhum cliente encontrado</td></tr>';return;}
+  const sitColor = s => {
+    if(!s) return 'var(--text2)';
+    if(s.toUpperCase().includes('ATIVA')) return 'var(--green)';
+    if(s.toUpperCase().includes('SUSPENSA')||s.toUpperCase().includes('IRREGULAR')) return 'var(--amber)';
+    if(s.toUpperCase().includes('BAIXADA')||s.toUpperCase().includes('INAPTA')) return 'var(--red)';
+    return 'var(--text2)';
+  };
+  tbody.innerHTML=clients.map(cl=>{
+    const cnt=store.ctes.filter(c=>c.clientId===cl.id).length;
+    return `<tr>
+      <td><strong style="font-size:13px">${cl.name}</strong></td>
+      <td style="color:var(--text2);font-size:12px">${cl.fantasia||'—'}</td>
+      <td><span class="mono">${fmtCnpj(cl.cnpj)}</span></td>
+      <td style="color:var(--text2);font-size:12px">${cl.municipio||'—'}</td>
+      <td><span class="mono">${cl.user}</span></td>
+      <td style="text-align:center">${cnt}</td>
+      <td style="font-size:12px;color:${sitColor(cl.situacao)}">${cl.situacao||'—'}</td>
+      <td style="color:var(--text2);font-size:12px">${cl.lastAccess||'—'}</td>
+      <td style="display:flex;gap:4px;">
+        <button class="btn-sm" onclick="openClientModal(${cl.id})">Editar</button>
+        <button class="btn-sm danger" onclick="removeClient(${cl.id})">Remover</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+// ─── SELECTION STATE ─────────────────────────────────────────
+let selectedChaves = new Set();
+function updateBulkBar() {
+  const bar=document.getElementById('bulk-bar'), n=document.getElementById('bulk-n');
+  if(!bar||!n) return;
+  selectedChaves.size>0 ? bar.classList.add('visible') : bar.classList.remove('visible');
+  n.textContent = selectedChaves.size;
+}
+function toggleAll(chk) {
+  document.querySelectorAll('#admin-ctes-tbody input[type=checkbox]').forEach(b=>{
+    b.checked=chk.checked;
+    chk.checked ? selectedChaves.add(b.dataset.chave) : selectedChaves.delete(b.dataset.chave);
+  });
+  updateBulkBar();
+}
+function toggleOne(el) {
+  const chave = el.dataset.chave, checked = el.checked;
+  checked ? selectedChaves.add(chave) : selectedChaves.delete(chave);
+  updateBulkBar();
+  const boxes=document.querySelectorAll('#admin-ctes-tbody input[type=checkbox]');
+  const master=document.getElementById('chk-all');
+  if(master) master.checked = boxes.length>0 && [...boxes].every(function(b){return b.checked;});
+}
+function clearSel() {
+  selectedChaves.clear();
+  document.querySelectorAll('#admin-ctes-tbody input[type=checkbox]').forEach(b=>b.checked=false);
+  const m=document.getElementById('chk-all'); if(m) m.checked=false;
+  updateBulkBar();
+}
+function applyBulk() {
+  const ns=document.getElementById('bulk-status-sel').value;
+  if(!ns){alert('Selecione um status.');return;}
+  if(!selectedChaves.size){alert('Nenhum CTe selecionado.');return;}
+  if(!confirm('Alterar '+selectedChaves.size+' CTe(s) para "'+ns+'"?')) return;
+  store.ctes.filter(c=>selectedChaves.has(c.chave)).forEach(c=>c.status=ns);
+  save(); clearSel(); renderAdminCtes(); renderAdminStats(); renderDash();
+}
+
+function renderAdminCtes() {
+  const q=(document.getElementById('admin-busca')||{}).value?.toLowerCase()||'';
+  const fc=(document.getElementById('admin-fc')||{}).value||'';
+  const fs=(document.getElementById('admin-fs')||{}).value||'';
+  let ctes=[...store.ctes].sort((a,b)=>b.numero-a.numero);
+  if(q) ctes=ctes.filter(d=>String(d.numero).includes(q)||d.chave.includes(q)||d.destino.toLowerCase().includes(q)||(d.tomadorNome||'').toLowerCase().includes(q));
+  if(fc) ctes=ctes.filter(c=>c.clientId==fc);
+  if(fs) ctes=ctes.filter(c=>c.status===fs);
+  const tbody=document.getElementById('admin-ctes-tbody');
+  if(!ctes.length){tbody.innerHTML='<tr class="empty-row"><td colspan="10">Nenhum CTe encontrado</td></tr>';return;}
+  const rows = ctes.map(function(d) {
+    const cl=store.clients.find(function(c){return c.id===d.clientId;});
+    const sel=selectedChaves.has(d.chave);
+    const bg=sel?'background:rgba(204,0,0,0.06)':'';
+    const chk='<td class="chk"><input type="checkbox" '+(sel?'checked':'')+' onchange="toggleOne(this)" data-chave="'+d.chave+'" /></td>';
+    const num='<td><span class="mono">#'+d.numero+'</span></td>';
+    const nfTd='<td style="font-size:12px;font-weight:500;color:var(--accent)">'+fmtNFe(d)+'</td>';
+    const tom='<td style="font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(d.tomadorNome||'—')+'<br><span class="mono" style="font-size:10px">'+fmtCnpj(d.tomadorCnpj||'')+'</span></td>';
+    const dest='<td>'+d.destino+'</td>';
+    const dt='<td style="color:var(--text2);font-size:12px">'+fmtDate(d.dataEmissao)+'</td>';
+    const val='<td>'+fmtVal(d.valor)+'</td>';
+    const stSel='<td><select onchange="updateStatus(this)" data-chave="'+d.chave+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;">'+statusOptionsHtml(d.status)+'</select></td>';
+    const cli='<td style="font-size:12px">'+(cl?cl.name:'<span style="color:var(--amber)">Sem cliente</span>')+'</td>';
+    const btns='<td style="display:flex;gap:4px;">'+(!cl?'<button class="btn-sm" onclick="openLink(\''+d.chave+'\')">Vincular</button>':'')+'<button class="btn-sm danger" onclick="removeCte(\''+d.chave+'\')">×</button></td>';
+    return '<tr style="'+bg+'">'+chk+num+nfTd+tom+dest+dt+val+stSel+cli+btns+'</tr>';
+  });
+  tbody.innerHTML=rows.join('');
+}
+
+
+function populateSelects() {
+  const opts=store.clients.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join('');
+  ['dash-fc','admin-fc'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">Todos os clientes</option>'+opts;});
+  populateStatusSelects();
+}
+
+// ─── XML PARSING — CTe ────────────────────────────────────────
+function parseCteXml(xmlStr, fname) {
+  try {
+    const doc = new DOMParser().parseFromString(xmlStr,'text/xml');
+    if (doc.querySelector('parsererror')) return {ok:false,msg:'XML inválido ou mal formado'};
+    const infCte = doc.querySelector('infCte,infCTeOS,infCte');
+    if (!infCte) return {ok:false,msg:'Não é um XML de CTe reconhecido (infCte não encontrado)'};
+    const g = s => { const el=infCte.querySelector(s); return el?el.textContent.trim():''; };
+    const chave = infCte.getAttribute('Id')||g('chCTe')||'';
+    const numero = parseInt(g('nCT')||g('nCTE'))||0;
+    const serie = g('serie');
+    const dataEmissao = g('dhEmi')||g('dEmi')||'';
+    const valor = parseFloat(g('vTPrest')||g('vRec')||g('vCT')||'0');
+    const qCarga = g('qCarga');
+    // Extract all NF-e keys linked to this CTe
+    const nfNodes = doc.querySelectorAll('infNFe,infNF,infOutros');
+    const nfeChaves = [];
+    const nfeNumeros = []; // número legível da NF (nNF field)
+    nfNodes.forEach(function(node) {
+      const ch = node.querySelector('chave,chNFe');
+      if (ch && ch.textContent.trim().length >= 44) nfeChaves.push(ch.textContent.trim());
+      const nNum = node.querySelector('nNF');
+      if (nNum && nNum.textContent.trim()) nfeNumeros.push(nNum.textContent.trim());
+    });
+    // Also try direct chNFe at any level
+    doc.querySelectorAll('chNFe').forEach(function(el) {
+      const v = el.textContent.trim();
+      if (v.length >= 44 && !nfeChaves.includes(v)) {
+        nfeChaves.push(v);
+        // Extract nNF from chave position 25-34 (NF number inside chave)
+        const nFromChave = String(parseInt(v.substring(25,34)));
+        if (nFromChave && !nfeNumeros.includes(nFromChave)) nfeNumeros.push(nFromChave);
+      }
+    });
+    // If no nNF found but chaves exist, extract from chave (digits 25-34)
+    if (nfeNumeros.length === 0 && nfeChaves.length > 0) {
+      nfeChaves.forEach(function(ch) {
+        const n = String(parseInt(ch.substring(25,34)));
+        if (n && n !== '0') nfeNumeros.push(n);
+      });
+    }
+    const qNF = nfNodes.length || nfeChaves.length;
+    const peso = qCarga ? qCarga+' kg' : '';
+    const volumes = qNF || '';
+    // Tomador: toma3 (ref ao emitente/rem/exped/receb/dest) ou toma4 (dados diretos)
+    const toma4 = infCte.querySelector('toma4');
+    const toma3 = infCte.querySelector('toma3');
+    let tomadorCnpj='', tomadorNome='';
+    if (toma4) {
+      tomadorCnpj = cc(toma4.querySelector('CNPJ,CPF')?.textContent||'');
+      tomadorNome = toma4.querySelector('xNome')?.textContent.trim()||'';
+    } else if (toma3) {
+      const idx = parseInt(toma3.querySelector('toma')?.textContent||'-1');
+      const map={0:'rem',1:'exped',2:'receb',3:'dest'};
+      const ref = idx>=0?infCte.querySelector(map[idx]):null;
+      if (ref) { tomadorCnpj=cc(ref.querySelector('CNPJ,CPF')?.textContent||''); tomadorNome=ref.querySelector('xNome')?.textContent.trim()||''; }
+    }
+    // Origem / destino
+    const rem = infCte.querySelector('rem'), dest = infCte.querySelector('dest');
+    const remNome = rem?.querySelector('xNome')?.textContent.trim()||'';
+    const destNome = dest?.querySelector('xNome')?.textContent.trim()||'';
+    const remMun = rem?.querySelector('xMun')?.textContent||''; const remUF = rem?.querySelector('UF')?.textContent||'';
+    const destMun = dest?.querySelector('xMun')?.textContent||''; const destUF = dest?.querySelector('UF')?.textContent||'';
+    // Extract full destination address from CTe XML
+    const destCnpj  = dest?.querySelector('CNPJ,CPF')?.textContent.trim()||'';
+    const destCep   = dest?.querySelector('CEP')?.textContent.trim()||'';
+    const destLogr  = dest?.querySelector('xLgr')?.textContent.trim()||'';
+    const destNumero= dest?.querySelector('nro')?.textContent.trim()||'';
+    const destComp  = dest?.querySelector('xCpl')?.textContent.trim()||'';
+    const destBairro= dest?.querySelector('xBairro')?.textContent.trim()||'';
+    // Build formatted address
+    const destEndParts = [destLogr, destNumero, destComp, destBairro, destMun, destUF].filter(Boolean);
+    const destEndFormatado = destEndParts.join(', ');
+    const origem = remMun?`${remMun}/${remUF}`:'—';
+    const destino = destMun?`${destMun}/${destUF}`:'—';
+    if (!numero) return {ok:false,msg:'Número do CTe não encontrado no XML'};
+    if (store.ctes.find(c=>c.chave===chave||(c.numero===numero&&c.serie===serie))) return {ok:false,msg:`CTe #${numero} já importado`};
+    const client = store.clients.find(c=>cc(c.cnpj)===tomadorCnpj);
+    const cte = { chave:chave||`gen-${numero}-${Date.now()}`, numero, serie, dataEmissao, valor, peso, volumes:String(volumes), origem, destino, remNome, destNome, tomadorCnpj, tomadorNome, destCnpj, destCep, destEndereco:destEndFormatado, status:'Manifestado', clientId:client?client.id:null, eventos:[], xmlFile:fname, nfeChaves:nfeChaves, nfeNumeros:nfeNumeros };
+    store.ctes.push(cte); save();
+    return {ok:true, msg:`CTe #${numero} importado${client?' → '+client.name:' (sem cliente — vincule na aba CTes)'}`, needsLink:!client, chave:cte.chave, numero};
+  } catch(e) { return {ok:false,msg:'Erro: '+e.message}; }
+}
+
+// ─── XML PARSING — EVENTO ─────────────────────────────────────
+const EVT_MAP = {
+  '110111':{status:'Cancelado',label:'Cancelamento registrado'},
+  '110112':{status:'Cancelado',label:'Cancelamento por substituição'},
+  '110160':{status:'Em trânsito',label:'Registro de passagem — MDF-e'},
+  '110170':{status:'Entregue',label:'Entrega confirmada'},
+  '110171':{status:'Entregue',label:'Entrega da mercadoria (evento)'},
+  '110172':{status:'Pendente',label:'Insucesso de entrega'},
+  '610110':{status:'Manifestado',label:'Confirmação do recebimento pelo tomador'},
+  '610111':{status:'Pendente',label:'Ciência da operação'},
+  '610114':{status:'Pendente',label:'Desconhecimento da operação'},
+  '610115':{status:'Pendente',label:'Operação não realizada'},
+};
+
+function parseEventoXml(xmlStr, fname) {
+  try {
+    const doc = new DOMParser().parseFromString(xmlStr,'text/xml');
+    if (doc.querySelector('parsererror')) return {ok:false,msg:'XML inválido'};
+    const inf = doc.querySelector('infEvento,infEventoCTe');
+    if (!inf) return {ok:false,msg:'Não é um XML de evento reconhecido'};
+    const g = s=>{ const el=inf.querySelector(s); return el?el.textContent.trim():''; };
+    const chCTe=g('chCTe'), tpEvento=g('tpEvento'), dhEvento=g('dhEvento')||g('dEmi')||'', xEvento=g('xEvento')||g('xMotivo')||'', nSeq=g('nSeqEvento')||'1';
+    if (!chCTe) return {ok:false,msg:'Chave do CTe não encontrada no evento'};
+    const cte = store.ctes.find(c=>c.chave===chCTe||c.chave.replace(/\D/g,'')===chCTe.replace(/\D/g,''));
+    if (!cte) return {ok:false,msg:`CTe chave ...${chCTe.slice(-8)} não encontrado — importe o CTe primeiro`};
+    const mapped = EVT_MAP[tpEvento]||null;
+    const label = mapped?mapped.label:(xEvento||`Evento ${tpEvento}`);
+    cte.eventos = cte.eventos||[];
+    cte.eventos.push({tpEvento, dhEvento, label, seq:nSeq});
+    if (mapped) cte.status=mapped.status;
+    save();
+    return {ok:true, msg:`CTe #${cte.numero} → "${label}"${mapped?' → status: '+mapped.status:''}`};
+  } catch(e) { return {ok:false,msg:'Erro: '+e.message}; }
+}
+
+// ─── UPLOAD ──────────────────────────────────────────────────
+function addLogRow(logEl, ok, filename, msg, chave) {
+  const row=document.createElement('div'); row.className='log-row';
+  const cls=ok?'log-ok':'log-err', icon=ok?'✓':'✗';
+  row.innerHTML=`<div class="log-icon ${cls}">${icon}</div><span class="log-file">${filename}</span><span class="log-msg">${msg}</span>${ok&&chave?`<button class="btn-sm" style="margin-left:auto;flex-shrink:0" onclick="openLink('${chave}')">Vincular</button>`:''}`;
+  logEl.prepend(row);
+}
+
+function processXmlText(xmlStr, fname, tipo, logEl) {
+  const res = tipo==='cte' ? parseCteXml(xmlStr, fname) : parseEventoXml(xmlStr, fname);
+  addLogRow(logEl, res.ok, fname, res.msg, res.ok && res.needsLink ? res.chave : null);
+  renderAdminStats(); renderDash(); renderAdminCtes();
+}
+
+function handleFiles(files, tipo) {
+  const logEl = document.getElementById(tipo==='cte' ? 'log-cte' : 'log-evt');
+  Array.from(files).forEach(file => {
+    const isZip = file.name.toLowerCase().endsWith('.zip');
+    if (isZip) {
+      // Show a loading entry
+      const loadRow = document.createElement('div'); loadRow.className='log-row';
+      loadRow.innerHTML=`<div class="log-icon log-warn" style="background:var(--blue-bg);color:var(--accent)">↓</div><span class="log-file">${file.name}</span><span class="log-msg" id="zip-progress-${file.name.replace(/\W/g,'_')}">Descompactando...</span>`;
+      logEl.prepend(loadRow);
+
+      const reader = new FileReader();
+      reader.onload = async e => {
+        try {
+          const zip = await JSZip.loadAsync(e.target.result);
+          const xmlFiles = Object.keys(zip.files).filter(n => n.toLowerCase().endsWith('.xml') && !zip.files[n].dir);
+          const progEl = document.getElementById('zip-progress-'+file.name.replace(/\W/g,'_'));
+          if (progEl) progEl.textContent = `${xmlFiles.length} XML(s) encontrado(s) — processando...`;
+          let ok=0, err=0;
+          for (const xmlPath of xmlFiles) {
+            const content = await zip.files[xmlPath].async('string');
+            const fname = xmlPath.split('/').pop();
+            const res = tipo==='cte' ? parseCteXml(content, fname) : parseEventoXml(content, fname);
+            addLogRow(logEl, res.ok, fname, res.msg, res.ok && res.needsLink ? res.chave : null);
+            res.ok ? ok++ : err++;
+          }
+          if (progEl) progEl.textContent = `ZIP processado: ${ok} importado(s)${err?' — '+err+' erro(s)':''}`;
+          renderAdminStats(); renderDash(); renderAdminCtes();
+        } catch(ex) {
+          addLogRow(logEl, false, file.name, 'Erro ao descompactar ZIP: '+ex.message, null);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // XML direto
+      const reader = new FileReader();
+      reader.onload = e => processXmlText(e.target.result, file.name, tipo, logEl);
+      reader.readAsText(file, 'UTF-8');
+    }
+  });
+}
+function onDrag(e,id){e.preventDefault();document.getElementById(id).classList.add('drag');}
+function offDrag(id){document.getElementById(id).classList.remove('drag');}
+function onDrop(e,tipo){e.preventDefault();offDrag(tipo==='cte'?'zone-cte':'zone-evt');handleFiles(e.dataTransfer.files,tipo);}
+
+// ─── MODAL DETAIL ─────────────────────────────────────────────
+function openDetail(chave) {
+  const d=store.ctes.find(c=>c.chave===chave); if(!d) return;
+  document.getElementById('modal-num').textContent=`CTe #${d.numero}${d.serie?' — Série '+d.serie:''}`;
+  document.getElementById('modal-grid').innerHTML=`
+    <div class="detail-item"><div class="di-label">Data emissão</div><div class="di-val">${fmtDate(d.dataEmissao)}</div></div>
+    <div class="detail-item"><div class="di-label">Situação</div><div class="di-val">${badge(d.status)}</div></div>
+    <div class="detail-item"><div class="di-label">Origem</div><div class="di-val">${d.origem}</div></div>
+    <div class="detail-item"><div class="di-label">Destino</div><div class="di-val">${d.destino}</div></div>
+    <div class="detail-item"><div class="di-label">Remetente</div><div class="di-val">${d.remNome||'—'}</div></div>
+    <div class="detail-item"><div class="di-label">Destinatário</div><div class="di-val">${d.destNome||'—'}</div></div>
+    <div class="detail-item"><div class="di-label">Valor total</div><div class="di-val">${fmtVal(d.valor)}</div></div>
+    <div class="detail-item"><div class="di-label">Peso / Volumes</div><div class="di-val">${d.peso||'—'} / ${d.volumes||'—'}</div></div>
+    <div class="detail-item full"><div class="di-label">Tomador</div><div class="di-val">${d.tomadorNome||'—'} — ${fmtCnpj(d.tomadorCnpj||'')}</div></div>
+    <div class="detail-item full" style="background:rgba(204,0,0,0.06);border-radius:8px;padding:10px 12px;margin-top:2px;"><div class="di-label" style="color:var(--accent)">Nota(s) Fiscal(is)</div><div class="di-val" style="font-size:15px;color:var(--accent)">${fmtNFe(d)}</div></div>
+    <div class="detail-item full"><div class="di-label">Chave de acesso CTe</div><div class="di-val" style="font-family:'DM Mono',monospace;font-size:11px;word-break:break-all">${d.chave}</div></div>
+    <div class="detail-item full" id="nfe-section-placeholder"></div>
+  `;
+
+  // Build NF-e cards and inject
+  const nfes = d.nfeChaves && d.nfeChaves.length ? d.nfeChaves : [];
+  const nfeHtml = nfes.length
+    ? nfes.map(function(ch) {
+        const sefazUrl = 'https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&nfe=' + ch;
+        return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;">'
+          + '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:5px;">Chave NF-e</div>'
+          + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;word-break:break-all;color:var(--text);margin-bottom:8px;">' + ch + '</div>'
+          + '<a href="' + sefazUrl + '" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:12px;font-weight:500;border-radius:7px;background:var(--accent);color:#fff;text-decoration:none;">🔍 Consultar na SEFAZ</a>'
+          + '</div>';
+      }).join('')
+    : '<div style="font-size:13px;color:var(--text2);">NF-e não identificada no XML. Número de volumes: ' + (d.volumes||'—') + '</div>';
+  const nfeSec = document.createElement('div');
+  nfeSec.style.marginTop = '4px';
+  nfeSec.innerHTML = '<div class="section-sep">Nota(s) Fiscal(is) vinculada(s)</div>' + nfeHtml;
+  document.getElementById('modal-grid').insertAdjacentElement('afterend', nfeSec);
+  const evts=(d.eventos||[]).slice().sort((a,b)=>(a.dhEvento||'').localeCompare(b.dhEvento||''));
+  const base=[{label:'CTe emitido e autorizado',time:fmtDate(d.dataEmissao),done:true},{label:'Manifestado pela transportadora',time:fmtDate(d.dataEmissao),done:d.status!=='Pendente'}];
+  const extras=evts.map(e=>({label:e.label,time:fmtDate(e.dhEvento),done:true}));
+  const pending=d.status!=='Entregue'&&d.status!=='Cancelado'?[{label:d.status==='Em trânsito'?'Entregue ao destinatário':'Em trânsito / Entrega',time:null,active:d.status==='Em trânsito'}]:[];
+  document.getElementById('modal-tl').innerHTML=[...base,...extras,...pending].map(e=>`
+    <div class="tl-item"><div class="tl-dot ${e.done?'done':(e.active?'active':'pending')}"></div>
+    <div class="tl-text"><p>${e.label}</p><span>${e.time||'Aguardando'}</span></div></div>`).join('');
+  // Delivery photo section
+  var existingPhotoSec = document.getElementById('delivery-photo-sec');
+  if (existingPhotoSec) existingPhotoSec.remove();
+  if (d.driverPhoto) {
+    var photoSec = document.createElement('div');
+    photoSec.id = 'delivery-photo-sec';
+    photoSec.style.marginTop = '12px';
+    photoSec.innerHTML = '<div class="section-sep">Comprovante de entrega</div>'
+      + '<div style="background:var(--bg3);border:1px solid var(--green);border-radius:var(--radius-lg);padding:12px;">'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+      + '<span style="font-size:18px;">✅</span>'
+      + '<div>'
+      + '<div style="font-size:13px;font-weight:600;color:var(--green)">Entrega confirmada pelo motorista</div>'
+      + (d.driverName ? '<div style="font-size:12px;color:var(--text2)">Motorista: '+d.driverName+'</div>' : '')
+      + (d.driverPhotoTime ? '<div style="font-size:12px;color:var(--text2)">Horário: '+d.driverPhotoTime+'</div>' : '')
+      + '</div>'
+      + '</div>'
+      + '<img src="'+d.driverPhoto+'" style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;" class="proof-photo" title="Clique para ampliar" />'
+      + '<p style="font-size:11px;color:var(--text2);margin-top:6px;text-align:center;">Clique na foto para ampliar</p>'
+      + '</div>';
+    document.getElementById('modal-tl').insertAdjacentElement('afterend', photoSec);
+  }
+  document.getElementById('modal-detail').classList.add('open');
+  // Attach click handlers to proof photos (can't use inline onclick due to quotes)
+  document.querySelectorAll('.proof-photo').forEach(function(img){
+    img.onclick = function(){ window.open(this.src, '_blank'); };
+  });
+}
+
+// ─── MODAL LINK ───────────────────────────────────────────────
+function openLink(chave) {
+  pendingLink=chave;
+  const cte=store.ctes.find(c=>c.chave===chave);
+  document.getElementById('link-num').textContent=cte?`#${cte.numero}`:chave;
+  document.getElementById('link-select').innerHTML=store.clients.map(c=>`<option value="${c.id}">${c.name} — ${fmtCnpj(c.cnpj)}</option>`).join('');
+  document.getElementById('modal-link').classList.add('open');
+}
+function confirmLink() {
+  const clientId=parseInt(document.getElementById('link-select').value);
+  if(!clientId||!pendingLink) return;
+  const cte=store.ctes.find(c=>c.chave===pendingLink);
+  if(cte){cte.clientId=clientId;save();}
+  closeModal('modal-link'); refreshAdmin();
+}
+
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+['modal-detail','modal-link','modal-client','modal-forgot','modal-addr'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);}));
+
+// ─── CLIENT MANAGEMENT ───────────────────────────────────────
+let editingClientId = null;
+
+function openClientModal(clientId) {
+  editingClientId = clientId || null;
+  const al = document.getElementById('client-alert');
+  al.className = 'alert-box'; al.textContent = '';
+  document.getElementById('cnpj-status').textContent = '';
+
+  if (clientId) {
+    const cl = store.clients.find(c => c.id === clientId);
+    document.getElementById('client-modal-title').textContent = 'Editar cliente';
+    document.getElementById('f-cnpj').value = fmtCnpj(cl.cnpj);
+    document.getElementById('f-nome').value = cl.name || '';
+    document.getElementById('f-fantasia').value = cl.fantasia || '';
+    document.getElementById('f-situacao').value = cl.situacao || '';
+    document.getElementById('f-municipio').value = cl.municipio || '';
+    document.getElementById('f-telefone').value = cl.telefone || '';
+    document.getElementById('f-email').value = cl.email || '';
+    document.getElementById('f-user').value = cl.user || '';
+    document.getElementById('f-senha').value = '';
+    document.getElementById('f-senha-label').textContent = 'Nova senha (deixe em branco para manter)';
+  } else {
+    document.getElementById('client-modal-title').textContent = 'Novo cliente';
+    ['f-cnpj','f-nome','f-fantasia','f-situacao','f-municipio','f-telefone','f-email','f-cep','f-endereco','f-user','f-senha'].forEach(i => { const el=document.getElementById(i); if(el) el.value=''; });
+    document.getElementById('f-senha-label').textContent = 'Senha';
+  }
+  document.getElementById('modal-client').classList.add('open');
+}
+
+function maskCnpj(input) {
+  let v = input.value.replace(/\D/g, '').substring(0, 14);
+  if (v.length > 12) v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  else if (v.length > 8) v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+  else if (v.length > 5) v = v.replace(/(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 2) v = v.replace(/(\d{2})(\d{0,3})/, '$1.$2');
+  input.value = v;
+}
+
+async function buscarCnpj() {
+  const cnpj = cc(document.getElementById('f-cnpj').value);
+  const statusEl = document.getElementById('cnpj-status');
+  const btn = document.getElementById('btn-buscar-cnpj');
+
+  if (cnpj.length !== 14) {
+    statusEl.textContent = 'CNPJ deve ter 14 dígitos.';
+    statusEl.style.color = 'var(--red)';
+    return;
+  }
+
+  btn.textContent = 'Consultando...';
+  btn.disabled = true;
+  statusEl.textContent = 'Buscando na Receita Federal...';
+  statusEl.style.color = 'var(--text2)';
+
+  // Tenta proxy local primeiro (server.js), depois APIs públicas
+  const isLocal = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
+  const apis = [];
+
+  // Proxy local (sem CORS, mais confiável)
+  if (isLocal) {
+    apis.push({
+      url: '/api/cnpj/' + cnpj,
+      parse: function(d) { return d; } // server.js já normaliza
+    });
+  }
+
+  // APIs públicas como fallback
+  apis.push(
+    {
+      url: 'https://brasilapi.com.br/api/cnpj/v1/' + cnpj,
+      parse: function(d) {
+        return {
+          razao: d.razao_social||'', fantasia: d.nome_fantasia||'',
+          situacao: d.descricao_situacao_cadastral||d.situacao_cadastral||'',
+          municipio: d.municipio||'', uf: d.uf||'',
+          telefone: d.ddd_telefone_1||'', email: d.email||'',
+          cep: (d.cep||'').replace(/[^0-9]/g,''),
+          logradouro: d.logradouro||'', numero: d.numero||'',
+          complemento: d.complemento||'', bairro: d.bairro||'',
+        };
+      }
+    },
+    {
+      url: 'https://publica.cnpj.ws/cnpj/' + cnpj,
+      parse: function(d) {
+        const e = d.estabelecimento||{};
+        return {
+          razao: d.razao_social||'', fantasia: e.nome_fantasia||'',
+          situacao: e.situacao_cadastral||'',
+          municipio: (e.cidade||{}).nome||'', uf: (e.estado||{}).sigla||'',
+          telefone: e.ddd1&&e.telefone1?'('+e.ddd1+') '+e.telefone1:'',
+          email: e.email||'',
+          cep: (e.cep||'').replace(/[^0-9]/g,''),
+          logradouro: [e.tipo_logradouro,e.logradouro].filter(Boolean).join(' '),
+          numero: e.numero||'', complemento: e.complemento||'', bairro: e.bairro||'',
+        };
+      }
+    },
+    {
+      url: 'https://receitaws.com.br/v1/cnpj/' + cnpj,
+      parse: function(d) {
+        return {
+          razao: d.nome||'', fantasia: d.fantasia||'', situacao: d.situacao||'',
+          municipio: d.municipio||'', uf: d.uf||'', telefone: d.telefone||'',
+          email: d.email||'',
+          cep: (d.cep||'').replace(/[^0-9]/g,''),
+          logradouro: d.logradouro||'', numero: d.numero||'',
+          complemento: d.complemento||'', bairro: d.bairro||'',
+        };
+      }
+    }
+  );
+
+  let parsed = null;
+  let lastError = '';
+
+  for (const api of apis) {
+    try {
+      const res = await fetch(api.url, { method:'GET', headers:{'Accept':'application/json'}, mode: api.url.startsWith('/')? 'same-origin':'cors' });
+      if (!res.ok) { lastError = 'HTTP '+res.status; continue; }
+      const json = await res.json();
+      if (json.erro || json.error || json.status==='ERROR') {
+        lastError = json.message||json.detalhes||json.error||'CNPJ não encontrado';
+        continue;
+      }
+      parsed = api.parse(json);
+      if (parsed && parsed.razao) break;
+    } catch(e) {
+      lastError = e.message||String(e);
+      continue;
+    }
+  }
+
+  btn.textContent = 'Consultar RF';
+  btn.disabled = false;
+
+  if (!parsed) {
+    statusEl.style.color = 'var(--red)';
+    if (/fetch|network|cors|load failed|failed to/i.test(lastError)) {
+      statusEl.innerHTML = '⚠ Bloqueio de rede (arquivo aberto localmente).<br>'
+        + '<span style="font-size:11px;color:var(--text2)">Use o <strong style="color:var(--text)">INICIAR.bat</strong> para abrir o sistema corretamente e a consulta funcionará automaticamente.</span>';
+    } else {
+      statusEl.textContent = '✗ ' + lastError;
+    }
+    return;
+  }
+
+  // Preenche os campos
+  document.getElementById('f-nome').value     = parsed.razao;
+  document.getElementById('f-fantasia').value = parsed.fantasia;
+  document.getElementById('f-situacao').value = parsed.situacao;
+  const locStr = parsed.municipio && parsed.uf ? parsed.municipio+'/'+parsed.uf : parsed.municipio||parsed.uf||'';
+  document.getElementById('f-municipio').value = locStr;
+  document.getElementById('f-telefone').value  = parsed.telefone;
+  document.getElementById('f-email').value     = parsed.email;
+
+  const cepEl = document.getElementById('f-cep');
+  if (cepEl) {
+    const cep = parsed.cep.replace(/(\d{5})(\d{3})/,'$1-$2');
+    cepEl.value = cep;
+  }
+  const endEl = document.getElementById('f-endereco');
+  if (endEl) {
+    endEl.value = [parsed.logradouro, parsed.numero, parsed.complemento, parsed.bairro].filter(Boolean).join(', ');
+  }
+
+  if (!document.getElementById('f-user').value && parsed.razao) {
+    document.getElementById('f-user').value = parsed.razao.split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g,'').substring(0,12);
+  }
+
+  statusEl.textContent = '✓ Dados carregados com sucesso — confira e ajuste se necessário.';
+  statusEl.style.color = 'var(--green)';
+}
+
+
+function saveClient() {
+  const nome = document.getElementById('f-nome').value.trim();
+  const cnpj = cc(document.getElementById('f-cnpj').value);
+  const user = document.getElementById('f-user').value.trim();
+  const senha = document.getElementById('f-senha').value.trim();
+  const fantasia = document.getElementById('f-fantasia').value.trim();
+  const situacao = document.getElementById('f-situacao').value.trim();
+  const municipio = document.getElementById('f-municipio').value.trim();
+  const telefone = document.getElementById('f-telefone').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const cep = (document.getElementById('f-cep')||{value:''}).value.trim();
+  const endereco = (document.getElementById('f-endereco')||{value:''}).value.trim();
+  const al = document.getElementById('client-alert');
+
+  if (!nome || !cnpj || !user) { al.className='alert-box err'; al.textContent='Razão social, CNPJ e usuário são obrigatórios.'; return; }
+  if (cnpj.length < 11) { al.className='alert-box err'; al.textContent='CNPJ inválido.'; return; }
+  if (!editingClientId && !senha) { al.className='alert-box err'; al.textContent='Informe uma senha para o novo cliente.'; return; }
+
+  const existingUser = store.users.find(u => u.user === user && u.clientId !== editingClientId);
+  if (existingUser) { al.className='alert-box err'; al.textContent='Usuário já existe.'; return; }
+
+  if (editingClientId) {
+    // EDIT
+    const cl = store.clients.find(c => c.id === editingClientId);
+    const oldUser = cl.user;
+    Object.assign(cl, { name: nome.toUpperCase(), cnpj, user, fantasia, situacao, municipio, telefone, email, cep, endereco });
+    const u = store.users.find(x => x.user === oldUser && x.role === 'client');
+    if (u) { u.user = user; u.name = nome.toUpperCase(); if (senha) u.pass = senha; }
+    al.className='alert-box ok'; al.textContent=`Cliente "${nome.toUpperCase()}" atualizado!`;
+  } else {
+    // CREATE
+    const id = store.nextClientId++;
+    store.clients.push({ id, name: nome.toUpperCase(), cnpj, user, fantasia, situacao, municipio, telefone, email, cep, endereco, lastAccess: null });
+    store.users.push({ user, pass: senha, role: 'client', clientId: id, name: nome.toUpperCase() });
+    store.ctes.filter(c => !c.clientId && cc(c.tomadorCnpj) === cnpj).forEach(c => c.clientId = id);
+    al.className='alert-box ok'; al.textContent=`Cliente "${nome.toUpperCase()}" cadastrado com sucesso!`;
+  }
+  save(); refreshAdmin();
+  setTimeout(() => closeModal('modal-client'), 1200);
+}
+
+function removeClient(id) {
+  if(!confirm('Remover este cliente? Os CTes ficam sem vinculação.')) return;
+  store.clients=store.clients.filter(c=>c.id!==id);
+  store.users=store.users.filter(u=>!(u.role==='client'&&u.clientId===id));
+  store.ctes.filter(c=>c.clientId===id).forEach(c=>c.clientId=null);
+  save(); refreshAdmin();
+}
+
+function togglePanel(id){const p=document.getElementById(id);if(p)p.style.display=p.style.display==='none'?'block':'none';}
+function updateStatus(el) {
+  const chave=el.dataset.chave, status=el.value;
+  const cte=store.ctes.find(function(c){return c.chave===chave;});
+  if(cte){cte.status=status;save();renderAdminStats();renderDash();}
+}
+function removeCte(chave) {
+  if(!confirm('Excluir este CTe?')) return;
+  store.ctes=store.ctes.filter(c=>c.chave!==chave);
+  save(); refreshAdmin();
+}
+
+// ─── STATUS MANAGER ──────────────────────────────────────────
+const QUICK_STATUSES = [
+  {name:'Coletado',color:'#8b5cf6'},{name:'No depot',color:'#06b6d4'},
+  {name:'Saiu para entrega',color:'#f97316'},{name:'Tentativa de entrega',color:'#ef4444'},
+  {name:'Entregue',color:'#22c55e'},{name:'Devolvido',color:'#6b7280'},
+  {name:'Manifestado',color:'#cc0000'},{name:'Em trânsito',color:'#f59e0b'},
+  {name:'Pendente',color:'#dc2626'},{name:'Cancelado',color:'#52525b'},
+];
+
+function renderStatusManager() {
+  const list = document.getElementById('sm-list');
+  if(!list) return;
+  if(!store.statuses||!store.statuses.length){list.innerHTML='<div style="color:var(--text2);font-size:13px;padding:8px 0">Nenhum status cadastrado</div>';return;}
+  list.innerHTML = store.statuses.map((s,i)=>{
+    const actions = s.builtIn
+      ? '<span class="sm-built">padrão</span>'
+      : '<button class="btn-sm danger" onclick="removeStatus('+i+')">×</button>';
+    return '<div class="sm-item">'
+      +'<div class="sm-left">'
+      +'<div class="sm-dot" style="background:'+s.color+'"></div>'
+      +'<span class="sm-name">'+s.name+'</span>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:8px;">'
+      +'<input type="color" value="'+s.color+'" onchange="updateStatusColor('+i+',this.value)" style="width:26px;height:26px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:1px;background:transparent;" />'
+      +actions
+      +'</div>'
+      +'</div>';
+  }).join('');
+
+  // Quick buttons — only show ones not already added
+  const existing = store.statuses.map(s=>s.name);
+  const qb = document.getElementById('quick-btns');
+  if(qb) {
+    const qBtns = QUICK_STATUSES.filter(function(q){return !existing.includes(q.name);});
+    qb.innerHTML = qBtns.map(function(q){
+      const btn = document.createElement('button');
+      btn.className = 'quick-btn';
+      btn.style.borderLeft = '3px solid '+q.color;
+      btn.textContent = q.name;
+      btn.onclick = function(){ quickAddStatus(q.name, q.color); };
+      return btn.outerHTML;
+    }).join('');
+    // Re-attach onclick after innerHTML (use event delegation)
+    qb.querySelectorAll && setTimeout(function(){
+      qb.querySelectorAll('.quick-btn').forEach(function(btn,i){
+        const q = qBtns[i];
+        btn.onclick = function(){ quickAddStatus(q.name, q.color); };
+      });
+    },0);
+  }
+}
+
+function addCustomStatus() {
+  const name = document.getElementById('ns-name').value.trim();
+  const color = document.getElementById('ns-color').value;
+  if(!name){alert('Digite o nome do status.');return;}
+  if(store.statuses.find(s=>s.name===name)){alert('Status já existe.');return;}
+  store.statuses.push({name,color,builtIn:false});
+  save(); document.getElementById('ns-name').value='';
+  renderStatusManager(); populateStatusSelects();
+}
+
+function quickAddStatus(name,color) {
+  if(store.statuses.find(s=>s.name===name)){alert('Status já existe.');return;}
+  store.statuses.push({name,color,builtIn:false});
+  save(); renderStatusManager(); populateStatusSelects();
+}
+
+function removeStatus(i) {
+  const s = store.statuses[i];
+  if(!s||s.builtIn){alert('Status padrão não pode ser removido.');return;}
+  if(!confirm('Remover status "'+s.name+'"?')) return;
+  store.statuses.splice(i,1);
+  save(); renderStatusManager(); populateStatusSelects();
+}
+
+function updateStatusColor(i,color) {
+  if(store.statuses[i]) store.statuses[i].color=color;
+  save(); renderStatusManager(); populateStatusSelects();
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────
+function fmtNFe(cte) {
+  var nums = (cte.nfeNumeros && cte.nfeNumeros.length) ? cte.nfeNumeros : [];
+  if (!nums.length && cte.nfeChaves && cte.nfeChaves.length) {
+    nums = cte.nfeChaves.map(function(ch){ return String(parseInt(ch.substring(25,34))); }).filter(function(n){ return n && n!=='0'; });
+  }
+  if (!nums.length) return '—';
+  return nums.map(function(n){ return 'NF-e '+n; }).join(' | ');
+}
+// ─── STATUS HELPERS ──────────────────────────────────────────
+function allStatuses() { return store.statuses || []; }
+function statusColor(name) {
+  const s = allStatuses().find(x=>x.name===name);
+  return s ? s.color : '#888888';
+}
+function badge(s) {
+  const col = statusColor(s);
+  const bg = col + '22';
+  return `<span class="status-pill" style="background:${bg};color:${col};"><span class="status-pill-dot" style="background:${col}"></span>${s}</span>`;
+}
+function statusOptionsHtml(selected) {
+  return allStatuses().map(s=>`<option value="${s.name}" ${s.name===selected?'selected':''}>${s.name}</option>`).join('');
+}
+function populateStatusSelects() {
+  const opts = allStatuses().map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
+  // filter selects
+  ['admin-fs','dash-fs','c-status'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){ el.innerHTML='<option value="">Todos os status</option>'+opts; }
+  });
+  // bulk select
+  const bs=document.getElementById('bulk-status-sel');
+  if(bs) bs.innerHTML='<option value="">Alterar status para...</option>'+opts;
+}
+function fmtVal(v){return 'R$ '+(parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtDate(d){if(!d)return '—';try{const dt=new Date(d);return isNaN(dt)?d.substring(0,10):dt.toLocaleDateString('pt-BR');}catch(e){return d;}}
+function fmtCnpj(c){if(!c)return '—';const n=cc(c);if(n.length===14)return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');if(n.length===11)return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');return c;}
+// ─── FORGOT PASSWORD ──────────────────────────────────────────
+function openForgot() {
+  document.getElementById('forgot-step1').style.display = 'block';
+  document.getElementById('forgot-step2').style.display = 'none';
+  document.getElementById('forgot-input').value = '';
+  const al = document.getElementById('forgot-alert');
+  al.className = 'alert-box'; al.textContent = '';
+  document.getElementById('modal-forgot').classList.add('open');
+}
+
+function sendRecovery() {
+  const input = document.getElementById('forgot-input').value.trim().toLowerCase();
+  const al = document.getElementById('forgot-alert');
+  if (!input) { al.className='alert-box err'; al.textContent='Digite seu usuário ou e-mail.'; return; }
+
+  // Find user by username or email
+  let foundUser = store.users.find(u => u.user.toLowerCase() === input);
+  if (!foundUser) {
+    // Try by email in clients
+    const cl = store.clients.find(c => (c.email||'').toLowerCase() === input);
+    if (cl) foundUser = store.users.find(u => u.user === cl.user);
+  }
+
+  if (!foundUser) { al.className='alert-box err'; al.textContent='Nenhuma conta encontrada com esse usuário ou e-mail.'; return; }
+
+  // Get email from client record
+  const cl = store.clients.find(c => c.user === foundUser.user);
+  const email = (cl && cl.email) ? cl.email : null;
+
+  if (!email) { al.className='alert-box err'; al.textContent='Esta conta não possui e-mail cadastrado. Contate o administrador.'; return; }
+
+  // Generate a recovery code and store it
+  const code = Math.random().toString(36).substring(2,8).toUpperCase();
+  foundUser.recoveryCode = code;
+  foundUser.recoveryExpires = Date.now() + 30 * 60 * 1000; // 30 min
+  save();
+
+  // Show step 2
+  document.getElementById('forgot-step1').style.display = 'none';
+  document.getElementById('forgot-step2').style.display = 'block';
+  const masked = email.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + b.replace(/./g,'•') + c);
+  document.getElementById('forgot-email-show').textContent = masked;
+  document.getElementById('forgot-code').textContent = code;
+}
+
+// ─── ADMIN: CHANGE OWN PASSWORD ───────────────────────────────
+function changeAdminPassword() {
+  const cur = document.getElementById('pw-current').value;
+  const nw  = document.getElementById('pw-new').value;
+  const cnf = document.getElementById('pw-confirm').value;
+  const al  = document.getElementById('pw-alert');
+  if (!cur||!nw||!cnf) { al.className='alert-box err'; al.textContent='Preencha todos os campos.'; return; }
+  if (nw.length < 4) { al.className='alert-box err'; al.textContent='A nova senha deve ter ao menos 4 caracteres.'; return; }
+  if (nw !== cnf) { al.className='alert-box err'; al.textContent='As senhas não conferem.'; return; }
+  const u = store.users.find(x => x.user === currentUser.user);
+  if (!u || u.pass !== cur) { al.className='alert-box err'; al.textContent='Senha atual incorreta.'; return; }
+  u.pass = nw;
+  currentUser.pass = nw;
+  save();
+  al.className='alert-box ok'; al.textContent='Senha alterada com sucesso!';
+  ['pw-current','pw-new','pw-confirm'].forEach(id => document.getElementById(id).value='');
+}
+
+// ─── ADMIN: RESET CLIENT PASSWORD BY CODE ─────────────────────
+function lookupCode() {
+  const code = document.getElementById('reset-code').value.trim().toUpperCase();
+  const foundDiv = document.getElementById('reset-found');
+  if (code.length < 4) { foundDiv.style.display='none'; return; }
+  const u = store.users.find(x => x.recoveryCode === code && x.recoveryExpires > Date.now());
+  if (!u) { foundDiv.style.display='none'; return; }
+  const cl = store.clients.find(c => c.user === u.user);
+  document.getElementById('reset-client-name').textContent = cl ? cl.name : u.name || u.user;
+  document.getElementById('reset-client-user').textContent = 'Usuário: ' + u.user;
+  foundDiv.style.display = 'block';
+}
+
+function resetClientPassword() {
+  const code    = document.getElementById('reset-code').value.trim().toUpperCase();
+  const newpass = document.getElementById('reset-newpass').value.trim();
+  const al      = document.getElementById('reset-alert');
+  if (!code) { al.className='alert-box err'; al.textContent='Digite o código de recuperação.'; return; }
+  if (!newpass||newpass.length<4) { al.className='alert-box err'; al.textContent='Nova senha deve ter ao menos 4 caracteres.'; return; }
+  const u = store.users.find(x => x.recoveryCode === code && x.recoveryExpires > Date.now());
+  if (!u) { al.className='alert-box err'; al.textContent='Código inválido ou expirado (válido por 30 min).'; return; }
+  u.pass = newpass;
+  delete u.recoveryCode;
+  delete u.recoveryExpires;
+  save();
+  al.className='alert-box ok'; al.textContent='Senha do cliente redefinida com sucesso!';
+  document.getElementById('reset-code').value='';
+  document.getElementById('reset-newpass').value='';
+  document.getElementById('reset-found').style.display='none';
+}
+
+// Hook Minha Conta tab render
+const _origAdminTab = adminTab;
+
+// ═══════════════════════════════════════════════════════
+// DRIVER PAGE
+// ═══════════════════════════════════════════════════════
+let driverFilter = 'all';
+let currentPhotoCardId = null;
+
+function showDriverPage() {
+  showPage('page-driver');
+  document.getElementById('driver-name-label').textContent = currentUser.name || currentUser.user;
+  renderDriverList();
+}
+
+function setDriverFilter(f, btn) {
+  driverFilter = f;
+  document.querySelectorAll('.filter-tab').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderDriverList();
+}
+
+function renderDriverList() {
+  var driverId = currentUser.driverId;
+  var allMyCtes = store.ctes.filter(function(c){ return c.driverId === driverId; });
+  // Sort by routeOrder
+  allMyCtes.sort(function(a,b){ return (a.routeOrder||999) - (b.routeOrder||999); });
+
+  var ctes = allMyCtes.slice();
+  if (driverFilter === 'pending') ctes = ctes.filter(function(c){ return c.status !== 'Entregue' && c.status !== 'Devolvido'; });
+  if (driverFilter === 'done')    ctes = ctes.filter(function(c){ return c.status === 'Entregue' || c.status === 'Devolvido'; });
+
+  var total    = allMyCtes.length;
+  var entregue = allMyCtes.filter(function(c){ return c.status==='Entregue'; }).length;
+  document.getElementById('ds-total').textContent = total;
+  document.getElementById('ds-done').textContent  = entregue;
+  document.getElementById('ds-pend').textContent  = total - entregue;
+
+  // Route bar
+  var routeBar = document.getElementById('route-bar');
+  var routeStops = document.getElementById('route-stops');
+  if (allMyCtes.length) {
+    routeBar.style.display = 'block';
+    routeStops.innerHTML = '';
+    allMyCtes.forEach(function(cte, i) {
+      var done = cte.status === 'Entregue';
+      var isNext = !done && allMyCtes.slice(0,i).every(function(c){ return c.status==='Entregue'; });
+      var pin = document.createElement('div');
+      pin.className = 'route-stop';
+      var pinEl = document.createElement('div');
+      pinEl.className = 'route-stop-pin' + (done?' done':(isNext?' next':''));
+      pinEl.textContent = i + 1;
+      pin.appendChild(pinEl);
+      if (i < allMyCtes.length - 1) {
+        var line = document.createElement('div');
+        line.className = 'route-stop-line' + (done?' done':'');
+        pin.appendChild(line);
+      }
+      routeStops.appendChild(pin);
+    });
+  } else {
+    routeBar.style.display = 'none';
+  }
+
+  var list = document.getElementById('driver-list');
+  if (!ctes.length) {
+    list.innerHTML = '<div class="driver-empty"><div class="big">🚛</div><p>Nenhuma entrega'+(driverFilter!=='all'?' nesta categoria':' atribuída a você')+'</p></div>';
+    return;
+  }
+  list.innerHTML = '';
+
+  ctes.forEach(function(cte, i) {
+    var done = cte.status === 'Entregue';
+    var orderNum = (cte.routeOrder != null ? cte.routeOrder : i) + 1;
+
+    var card = document.createElement('div');
+    card.className = 'cte-card' + (done ? ' done' : '');
+    card.id = 'card-' + cte.chave;
+
+    // Build top row with order number
+    var topRow = document.createElement('div');
+    topRow.className = 'cte-card-top';
+    var nfLabel = fmtNFe(cte);
+    topRow.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">'
+      + '<div class="cte-card-order'+(done?' done':'')+'">'+orderNum+'</div>'
+      + '<div>'
+      + '<span class="cte-card-num">#'+cte.numero+'</span>'
+      + (nfLabel!=='—' ? '<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:1px;">'+nfLabel+'</div>' : '')
+      + '</div></div>'
+      + '<span class="cte-card-status">'+cte.status+'</span>';
+    card.appendChild(topRow);
+
+    var dest = document.createElement('div');
+    dest.className = 'cte-card-dest';
+    dest.textContent = cte.destNome || cte.destino;
+    card.appendChild(dest);
+
+    var sub = document.createElement('div');
+    sub.className = 'cte-card-sub';
+    var addr = buildDestAddress(cte);
+    var hasFullAddr = addr && addr !== (cte.destino||'').replace('/',' ')+', Brasil';
+    var subText = document.createElement('span');
+    subText.textContent = cte.origem + ' → ' + cte.destino + ' ';
+    var addrTag = document.createElement('span');
+    addrTag.className = 'addr-tag ' + (hasFullAddr?'has-addr':'no-addr');
+    addrTag.style.cssText = 'margin-left:4px;cursor:pointer;';
+    addrTag.textContent = hasFullAddr ? '📍 Endereço ✏️' : '⚠ Editar endereço';
+    addrTag.onclick = (function(ch){ return function(){ openAddrEdit(ch); }; })(cte.chave);
+    sub.appendChild(subText);
+    sub.appendChild(addrTag);
+    card.appendChild(sub);
+
+    // Photo preview
+    var img = document.createElement('img');
+    img.className = 'photo-preview' + (cte.driverPhoto ? ' show' : '');
+    img.id = 'prev-' + cte.chave;
+    if (cte.driverPhoto) img.src = cte.driverPhoto;
+    card.appendChild(img);
+
+    if (done) {
+      var doneBadge = document.createElement('div');
+      doneBadge.className = 'done-badge';
+      doneBadge.textContent = '✓ Entrega confirmada' + (cte.driverPhotoTime ? ' às ' + cte.driverPhotoTime : '');
+      card.appendChild(doneBadge);
+    } else {
+      var actions = document.createElement('div');
+      actions.className = 'cte-card-actions';
+      actions.style.flexWrap = 'wrap';
+      actions.style.gap = '8px';
+
+      // Navigation buttons wrapper
+      var navWrap = document.createElement('div');
+      navWrap.className = 'nav-btns';
+      navWrap.style.width = '100%';
+
+      var mapsBtn = document.createElement('button');
+      mapsBtn.className = 'btn-maps';
+      mapsBtn.innerHTML = '🗺 Maps';
+      mapsBtn.style.flex = '1';
+      mapsBtn.onclick = (function(ct){ return function(){ openNavigation(ct,'maps'); }; })(cte);
+
+      var wazeBtn = document.createElement('button');
+      wazeBtn.className = 'btn-waze';
+      wazeBtn.innerHTML = '📡 Waze';
+      wazeBtn.style.flex = '1';
+      wazeBtn.onclick = (function(ct){ return function(){ openNavigation(ct,'waze'); }; })(cte);
+
+      navWrap.appendChild(mapsBtn);
+      navWrap.appendChild(wazeBtn);
+
+      // Camera button
+      var camBtn = document.createElement('button');
+      camBtn.className = 'btn-camera';
+      camBtn.style.flex = '1';
+      camBtn.textContent = cte.driverPhoto ? '📷 Nova foto' : '📷 Tirar foto';
+      camBtn.onclick = (function(ch){ return function(){ openCamera(ch); }; })(cte.chave);
+
+      // Confirm button
+      var confBtn = document.createElement('button');
+      confBtn.className = 'btn-confirm';
+      confBtn.style.flex = '1';
+      confBtn.textContent = '✓ Confirmar';
+      confBtn.disabled = !cte.driverPhoto;
+      confBtn.onclick = (function(ch){ return function(){ confirmDelivery(ch); }; })(cte.chave);
+
+      actions.appendChild(navWrap);
+      actions.appendChild(camBtn);
+      actions.appendChild(confBtn);
+      card.appendChild(actions);
+    }
+    list.appendChild(card);
+  });
+}
+
+
+function badgeClass(s) {
+  var map = {'Manifestado':'badge-manifestado','Em trânsito':'badge-transito','Entregue':'badge-entregue','Pendente':'badge-pendente','Cancelado':'badge-cancelado'};
+  return map[s] || 'badge-pendente';
+}
+
+function openCamera(chave) {
+  currentPhotoCardId = chave;
+  var inp = document.getElementById('cam-input');
+  inp.value = '';
+  inp.click();
+}
+
+function handlePhoto(input) {
+  if (!input.files || !input.files[0] || !currentPhotoCardId) return;
+  var file = input.files[0];
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    var cte = store.ctes.find(function(c){ return c.chave === currentPhotoCardId; });
+    if (!cte) return;
+    cte.driverPhoto = dataUrl;
+    save();
+    // Update preview without full re-render
+    var prev = document.getElementById('prev-'+currentPhotoCardId);
+    if (prev) { prev.src = dataUrl; prev.classList.add('show'); }
+    // Enable confirm button
+    var card = document.getElementById('card-'+currentPhotoCardId);
+    if (card) {
+      var confirmBtn = card.querySelector('.btn-confirm');
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+    currentPhotoCardId = null;
+  };
+  reader.readAsDataURL(file);
+}
+
+function confirmDelivery(chave) {
+  var cte = store.ctes.find(function(c){ return c.chave === chave; });
+  if (!cte || !cte.driverPhoto) { alert('Tire uma foto do comprovante antes de confirmar.'); return; }
+  if (!confirm('Confirmar entrega do CTe #'+cte.numero+'?')) return;
+  cte.status = 'Entregue';
+  cte.driverPhotoTime = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  cte.eventos = cte.eventos || [];
+  cte.eventos.push({ label:'Entrega confirmada pelo motorista', dhEvento: new Date().toISOString(), seq:'auto' });
+  save();
+  renderDriverList();
+}
+
+// ═══════════════════════════════════════════════════════
+// ADMIN: DRIVER MANAGEMENT
+// ═══════════════════════════════════════════════════════
+function renderDriversTab() {
+  renderDriversTable();
+  renderAssignList();
+  populateDriverSelects();
+}
+
+function populateDriverSelects() {
+  var drivers = store.users.filter(function(u){ return u.role==='driver'; });
+  var opts = drivers.map(function(d){ return '<option value="'+d.driverId+'">'+d.name+'</option>'; }).join('');
+  var sel = document.getElementById('assign-driver-sel');
+  if (sel) sel.innerHTML = '<option value="">Selecione o motorista...</option>' + opts;
+
+  var routeSel = document.getElementById('route-driver-sel');
+  if (routeSel) routeSel.innerHTML = '<option value="">Selecione o motorista...</option>' + opts;
+
+  var clients = store.clients;
+  var cliOpts = clients.map(function(c){ return '<option value="'+c.id+'">'+c.name+'</option>'; }).join('');
+  var cf = document.getElementById('assign-client-filter');
+  if (cf) cf.innerHTML = '<option value="">Todos os clientes</option>' + cliOpts;
+}
+
+function renderDriversTable() {
+  var tbody = document.getElementById('drivers-tbody');
+  if (!tbody) return;
+  var drivers = store.users.filter(function(u){ return u.role==='driver'; });
+  if (!drivers.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhum motorista cadastrado</td></tr>';
+    return;
+  }
+  var today = new Date().toLocaleDateString('pt-BR');
+  tbody.innerHTML = drivers.map(function(d) {
+    var allCtes   = store.ctes.filter(function(c){ return c.driverId===d.driverId; });
+    var todayCtes = allCtes.filter(function(c){ return c.driverPhotoTime; });
+    var totalDone = allCtes.filter(function(c){ return c.status==='Entregue'; });
+    var dr = store.users.find(function(u){ return u.driverId===d.driverId; });
+    return '<tr>'
+      +'<td><strong>'+d.name+'</strong></td>'
+      +'<td style="color:var(--text2);font-size:12px">'+(d.phone||'—')+'</td>'
+      +'<td><span class="mono">'+d.user+'</span></td>'
+      +'<td style="text-align:center">'+todayCtes.length+'</td>'
+      +'<td style="text-align:center;color:var(--green)">'+totalDone.length+'</td>'
+      +'<td style="display:flex;gap:4px;">'
+      +'<button class="btn-sm" onclick="viewDriverDeliveries('+d.driverId+')">Ver entregas</button>'
+      +'<button class="btn-sm danger" onclick="removeDriver('+d.driverId+')">Remover</button>'
+      +'</td></tr>';
+  }).join('');
+}
+
+function renderAssignList() {
+  var list = document.getElementById('assign-cte-list');
+  if (!list) return;
+  var filterClient = (document.getElementById('assign-client-filter')||{}).value||'';
+  var assignable = ['Manifestado','Coletado','Em trânsito','Saiu para entrega','No depot'];
+  var ctes = store.ctes.filter(function(c){
+    return assignable.includes(c.status) && !c.driverId;
+  });
+  if (filterClient) ctes = ctes.filter(function(c){ return c.clientId == filterClient; });
+  if (!ctes.length) {
+    list.innerHTML = '<p style="font-size:13px;color:var(--text2);padding:12px 0;">Nenhum CTe disponível para atribuição.</p>';
+    return;
+  }
+  list.innerHTML = ctes.map(function(c) {
+    var cl = store.clients.find(function(cl){ return cl.id===c.clientId; });
+    return '<label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
+      +'<input type="checkbox" value="'+c.chave+'" style="accent-color:var(--accent);width:15px;height:15px;" />'
+      +'<span style="flex:1;"><strong>#'+c.numero+'</strong> — '+c.destino
+      +'<span style="display:block;font-size:11px;color:var(--text2);">'+(cl?cl.name:'Sem cliente')+'</span></span>'
+      +'<span style="font-size:12px;color:var(--text2);">'+c.status+'</span>'
+      +'</label>';
+  }).join('');
+}
+
+function assignCtes() {
+  var driverId = parseInt(document.getElementById('assign-driver-sel').value);
+  if (!driverId) { alert('Selecione um motorista.'); return; }
+  var checked = document.querySelectorAll('#assign-cte-list input[type=checkbox]:checked');
+  if (!checked.length) { alert('Selecione pelo menos um CTe.'); return; }
+  var driver = store.users.find(function(u){ return u.driverId===driverId; });
+  // Get current max order for this driver
+  var maxOrder = store.ctes.filter(function(c){ return c.driverId===driverId && c.routeOrder!=null; })
+    .reduce(function(m,c){ return Math.max(m, c.routeOrder); }, -1);
+  var nextOrder = maxOrder + 1;
+  checked.forEach(function(cb) {
+    var cte = store.ctes.find(function(c){ return c.chave===cb.value; });
+    if (cte) {
+      cte.driverId = driverId;
+      cte.driverName = driver ? driver.name : '';
+      cte.status = 'Saiu para entrega';
+      cte.routeOrder = nextOrder++;
+    }
+  });
+  save();
+  renderDriversTab();
+  renderRouteOrder();
+  alert('✓ '+checked.length+' CTe(s) atribuído(s) ao motorista '+( driver?driver.name:''));
+}
+
+function addDriver() {
+  var nome = document.getElementById('drv-nome').value.trim();
+  var tel  = document.getElementById('drv-tel').value.trim();
+  var user = document.getElementById('drv-user').value.trim();
+  var pass = document.getElementById('drv-pass').value.trim();
+  var al   = document.getElementById('driver-alert');
+  if (!nome||!user||!pass) { al.className='alert-box err'; al.textContent='Preencha nome, usuário e senha.'; return; }
+  if (pass.length<4)        { al.className='alert-box err'; al.textContent='Senha mínimo 4 caracteres.'; return; }
+  if (store.users.find(function(u){ return u.user===user; })) { al.className='alert-box err'; al.textContent='Usuário já existe.'; return; }
+  var driverId = store.nextDriverId++;
+  store.users.push({ user:user, pass:pass, role:'driver', driverId:driverId, name:nome, phone:tel });
+  save();
+  al.className='alert-box ok'; al.textContent='Motorista "'+nome+'" cadastrado!';
+  ['drv-nome','drv-tel','drv-user','drv-pass'].forEach(function(id){ document.getElementById(id).value=''; });
+  renderDriversTable(); populateDriverSelects();
+}
+
+function removeDriver(driverId) {
+  if (!confirm('Remover este motorista? Os CTes dele voltam para sem motorista.')) return;
+  store.users = store.users.filter(function(u){ return u.driverId!==driverId; });
+  store.ctes.filter(function(c){ return c.driverId===driverId; }).forEach(function(c){ delete c.driverId; delete c.driverName; });
+  save(); renderDriversTab();
+}
+
+function viewDriverDeliveries(driverId) {
+  var driver = store.users.find(function(u){ return u.driverId===driverId; });
+  var ctes = store.ctes.filter(function(c){ return c.driverId===driverId; });
+  if (!ctes.length) { alert('Nenhum CTe atribuído a '+( driver?driver.name:'este motorista')); return; }
+  var msg = (driver?driver.name:'Motorista')+' — '+ctes.length+' CTe(s):\n\n';
+  ctes.forEach(function(c){ msg += '#'+c.numero+' '+c.destino+' → '+c.status+(c.driverPhotoTime?' ('+c.driverPhotoTime+')':'')+'\n'; });
+  alert(msg);
+}
+
+
+// ─── ADMIN PROFILE ────────────────────────────────────────────
+function loadAdminProfile() {
+  const u = store.users.find(function(x){ return x.user === currentUser.user; });
+  if (!u) return;
+  const profile = u.profile || {};
+  var el;
+  el = document.getElementById('admin-nome');    if(el) el.value = profile.nome    || u.name || '';
+  el = document.getElementById('admin-email');   if(el) el.value = profile.email   || '';
+  el = document.getElementById('admin-tel');     if(el) el.value = profile.tel     || '';
+  el = document.getElementById('admin-empresa'); if(el) el.value = profile.empresa || '';
+  el = document.getElementById('admin-cnpj');    if(el) el.value = profile.cnpj    || '';
+}
+
+function saveAdminProfile() {
+  const al = document.getElementById('profile-alert');
+  const nome    = (document.getElementById('admin-nome')   ||{value:''}).value.trim();
+  const email   = (document.getElementById('admin-email')  ||{value:''}).value.trim();
+  const tel     = (document.getElementById('admin-tel')    ||{value:''}).value.trim();
+  const empresa = (document.getElementById('admin-empresa')||{value:''}).value.trim();
+  const cnpj    = (document.getElementById('admin-cnpj')   ||{value:''}).value.trim();
+
+  if (!nome) { al.className='alert-box err'; al.textContent='Informe seu nome.'; return; }
+
+  const u = store.users.find(function(x){ return x.user === currentUser.user; });
+  if (!u) return;
+  u.name = nome;
+  u.profile = { nome, email, tel, empresa, cnpj };
+  currentUser.name = nome;
+  save();
+
+  al.className='alert-box ok';
+  al.textContent='Dados salvos com sucesso!';
+  setTimeout(function(){ al.className='alert-box'; }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════
+// ROUTING — DRIVER SIDE
+// ═══════════════════════════════════════════════════════
+
+function buildDestAddress(cte) {
+  // Build best possible address for Maps
+  var parts = [];
+  if (cte.destEndereco) parts.push(cte.destEndereco);
+  if (cte.destCep) parts.push(cte.destCep);
+  // fallback: city/state from destino field
+  var city = cte.destino || '';
+  if (parts.length === 0 && city) parts.push(city.replace('/', ', ') + ', Brasil');
+  return parts.join(', ') || cte.destino || '';
+}
+
+function openNavigation(cte, app) {
+  var addr = buildDestAddress(cte);
+  if (!addr) { alert('Endereço do destinatário não disponível.'); return; }
+
+  if (app === 'waze') {
+    // Waze deep link — works on mobile and desktop
+    var wazeUrl = 'https://waze.com/ul?q=' + encodeURIComponent(addr) + '&navigate=yes';
+    window.open(wazeUrl, '_blank');
+    return;
+  }
+
+  // Google Maps — try to use current location as origin
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        var origin = pos.coords.latitude + ',' + pos.coords.longitude;
+        var url = 'https://www.google.com/maps/dir/?api=1'
+          + '&origin=' + encodeURIComponent(origin)
+          + '&destination=' + encodeURIComponent(addr)
+          + '&travelmode=driving';
+        window.open(url, '_blank');
+      },
+      function() {
+        var url = 'https://www.google.com/maps/dir/?api=1'
+          + '&destination=' + encodeURIComponent(addr)
+          + '&travelmode=driving';
+        window.open(url, '_blank');
+      },
+      { timeout: 4000 }
+    );
+  } else {
+    var url = 'https://www.google.com/maps/dir/?api=1'
+      + '&destination=' + encodeURIComponent(addr)
+      + '&travelmode=driving';
+    window.open(url, '_blank');
+  }
+}
+
+// Keep old name as alias for full-route button
+function openMapsNavigation(cte) { openNavigation(cte, 'maps'); }
+
+
+function openFullRoute() {
+  var driverId = currentUser.driverId;
+  var pending = store.ctes.filter(function(c){
+    return c.driverId === driverId && c.status !== 'Entregue' && c.status !== 'Devolvido';
+  }).sort(function(a,b){ return (a.routeOrder||999)-(b.routeOrder||999); });
+
+  if (!pending.length) { alert('Nenhuma entrega pendente para roteirizar.'); return; }
+
+  // Build Google Maps URL with waypoints
+  // Format: /dir/origin/wp1/wp2/.../destination
+  var addrs = pending.map(function(c){ return buildDestAddress(c); }).filter(Boolean);
+  if (!addrs.length) { alert('Endereços dos destinatários não disponíveis.'); return; }
+
+  var dest = encodeURIComponent(addrs[addrs.length - 1]);
+  var waypoints = addrs.slice(0, -1).map(encodeURIComponent).join('|');
+
+  var url = 'https://www.google.com/maps/dir/?api=1'
+    + '&destination=' + dest
+    + (waypoints ? '&waypoints=' + waypoints : '')
+    + '&travelmode=driving';
+
+  window.open(url, '_blank');
+}
+
+// ═══════════════════════════════════════════════════════
+// ROUTING — ADMIN SIDE
+// ═══════════════════════════════════════════════════════
+var dragSrcIdx = null;
+
+function autoSortRoute(driverId) {
+  var assignable = ['Manifestado','Coletado','Em trânsito','Saiu para entrega','No depot','Tentativa de entrega'];
+  var ctes = store.ctes.filter(function(c){ return c.driverId===driverId && assignable.includes(c.status); });
+  // Sort by CEP numerically (aproxima rota geográfica por região)
+  ctes.sort(function(a,b){
+    var ca = (a.destCep||'').replace(/\D/g,'');
+    var cb = (b.destCep||'').replace(/\D/g,'');
+    // If no CEP, sort by destino city alphabetically
+    if (!ca && !cb) return (a.destino||'').localeCompare(b.destino||'');
+    if (!ca) return 1;
+    if (!cb) return -1;
+    return parseInt(ca) - parseInt(cb);
+  });
+  ctes.forEach(function(c, i){ c.routeOrder = i; });
+  save();
+  renderRouteOrder();
+}
+
+function renderRouteOrder() {
+  var driverId = parseInt((document.getElementById('route-driver-sel')||{}).value||'0');
+  var container = document.getElementById('route-order-list');
+  var mapsPreview = document.getElementById('route-maps-preview');
+  if (!container) return;
+
+  if (!driverId) {
+    container.innerHTML = '<p style="font-size:13px;color:var(--text2);">Selecione um motorista para ver e ordenar o roteiro.</p>';
+    if (mapsPreview) mapsPreview.style.display = 'none';
+    return;
+  }
+
+  var assignable = ['Manifestado','Coletado','Em trânsito','Saiu para entrega','No depot','Tentativa de entrega'];
+  var ctes = store.ctes.filter(function(c){
+    return c.driverId === driverId && assignable.includes(c.status);
+  }).sort(function(a,b){ return (a.routeOrder!=null?a.routeOrder:999)-(b.routeOrder!=null?b.routeOrder:999); });
+
+  if (!ctes.length) {
+    container.innerHTML = '<p style="font-size:13px;color:var(--text2);">Nenhuma entrega pendente para este motorista.</p>';
+    if (mapsPreview) mapsPreview.style.display = 'none';
+    return;
+  }
+
+  // Auto-sort button + info
+  var header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;';
+  var noAddr = ctes.filter(function(c){ return !buildDestAddress(c)||buildDestAddress(c)===c.destino; }).length;
+  var info = document.createElement('span');
+  info.style.cssText = 'font-size:12px;color:var(--text2);';
+  info.textContent = ctes.length+' parada(s)'+(noAddr?' — '+noAddr+' sem endereço completo':'');
+  var autoBtn = document.createElement('button');
+  autoBtn.className = 'btn-auto-route';
+  autoBtn.innerHTML = '⚡ Ordenar automaticamente por CEP';
+  autoBtn.onclick = (function(id){ return function(){ autoSortRoute(id); }; })(driverId);
+  header.appendChild(info);
+  header.appendChild(autoBtn);
+  container.innerHTML = '';
+  container.appendChild(header);
+
+  ctes.forEach(function(cte, i) {
+    var addr = buildDestAddress(cte);
+    var hasFullAddr = addr && addr !== (cte.destino||'').replace('/',' ')+', Brasil';
+    var row = document.createElement('div');
+    row.className = 'assign-row';
+    row.draggable = true;
+    row.dataset.chave = cte.chave;
+    row.dataset.idx = i;
+    row.style.cssText = 'flex-wrap:wrap;gap:6px;';
+
+    var mainRow = document.createElement('div');
+    mainRow.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;';
+    mainRow.innerHTML = '<span class="sort-handle" title="Arraste para reordenar">⠿</span>'
+      + '<div class="assign-order-num">'+(i+1)+'</div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:13px;font-weight:500;">#'+cte.numero+' — '+(cte.destNome||cte.destino)+'</div>'
+      + '<div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:2px;">'+fmtNFe(cte)+'</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">'
+      + '<span class="addr-tag '+(hasFullAddr?'has-addr':'no-addr')+'">'
+      + (hasFullAddr ? '📍 '+addr.substring(0,45)+(addr.length>45?'…':'') : '⚠ Endereço incompleto')
+      + '</span>'
+      + '<button class="edit-addr-btn" title="Editar endereço" data-chave="'+cte.chave+'" onclick="openAddrEdit(this.dataset.chave)">✏️</button>'
+      + '</div>'
+      + '</div>'
+      + '<span style="font-size:11px;color:var(--text2);flex-shrink:0;">'+cte.status+'</span>';
+
+    row.appendChild(mainRow);
+
+    // Drag events
+    row.addEventListener('dragstart', function(e) {
+      dragSrcIdx = i;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(function(){ row.classList.add('dragging'); }, 0);
+    });
+    row.addEventListener('dragend', function() { row.classList.remove('dragging'); });
+    row.addEventListener('dragover', function(e) { e.preventDefault(); });
+    row.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (dragSrcIdx === null || dragSrcIdx === i) return;
+      var all = store.ctes.filter(function(c){ return c.driverId===driverId && assignable.includes(c.status); })
+        .sort(function(a,b){ return (a.routeOrder!=null?a.routeOrder:999)-(b.routeOrder!=null?b.routeOrder:999); });
+      var moved = all.splice(dragSrcIdx, 1)[0];
+      all.splice(i, 0, moved);
+      all.forEach(function(c, idx){ c.routeOrder = idx; });
+      save(); dragSrcIdx = null; renderRouteOrder();
+    });
+
+    container.appendChild(row);
+  });
+
+  // Google Maps preview link
+  if (mapsPreview) {
+    var addrs = ctes.map(function(c){ return buildDestAddress(c); }).filter(Boolean);
+    if (addrs.length) {
+      var dest = encodeURIComponent(addrs[addrs.length-1]);
+      var wps  = addrs.slice(0,-1).map(encodeURIComponent).join('|');
+      var mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination='+dest+(wps?'&waypoints='+wps:'')+'&travelmode=driving';
+      document.getElementById('route-maps-link').href = mapsUrl;
+      mapsPreview.style.display = 'block';
+    }
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
+// ADDRESS EDIT
+// ═══════════════════════════════════════════════════════
+var editingAddrChave = null;
+
+function openAddrEdit(chave) {
+  editingAddrChave = chave;
+  var cte = store.ctes.find(function(c){ return c.chave===chave; });
+  if (!cte) return;
+  document.getElementById('addr-modal-title').textContent = 'Endereço — CTe #'+cte.numero;
+  document.getElementById('addr-nome').value     = cte.destNome || '—';
+  document.getElementById('addr-endereco').value = cte.destEndereco || '';
+  document.getElementById('addr-cep').value      = cte.destCep ? cte.destCep.replace(/(\d{5})(\d{3})/,'$1-$2') : '';
+  document.getElementById('addr-comp').value     = cte.destComp || '';
+  var al = document.getElementById('addr-alert');
+  al.className = 'alert-box'; al.textContent = '';
+  document.getElementById('modal-addr').classList.add('open');
+}
+
+function saveDeliveryAddress() {
+  var cte = store.ctes.find(function(c){ return c.chave===editingAddrChave; });
+  if (!cte) return;
+  var endereco = document.getElementById('addr-endereco').value.trim();
+  var cep      = document.getElementById('addr-cep').value.replace(/\D/g,'');
+  var comp     = document.getElementById('addr-comp').value.trim();
+  var al = document.getElementById('addr-alert');
+  if (!endereco) { al.className='alert-box err'; al.textContent='Informe o endereço.'; return; }
+  cte.destEndereco = endereco;
+  cte.destCep      = cep;
+  cte.destComp     = comp;
+  // Mark as manually edited
+  cte.destEndEdited = true;
+  save();
+  al.className='alert-box ok'; al.textContent='Endereço salvo!';
+  setTimeout(function(){
+    closeModal('modal-addr');
+    renderRouteOrder();
+  }, 800);
+}
+
+function testNavAddr(app) {
+  var cte = store.ctes.find(function(c){ return c.chave===editingAddrChave; });
+  if (!cte) return;
+  var addr = document.getElementById('addr-endereco').value.trim();
+  if (!addr) { alert('Digite um endereço primeiro.'); return; }
+  if (app === 'waze') {
+    window.open('https://waze.com/ul?q='+encodeURIComponent(addr)+'&navigate=yes','_blank');
+  } else {
+    window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(addr)+'&travelmode=driving','_blank');
+  }
+}
+
+
+// ─── DRIVER LOGIN ──────────────────────────────────────────────
+function showDriverLogin() {
+  showPage('page-driver-login');
+  setTimeout(function(){ document.getElementById('drv-login-user').focus(); }, 100);
+}
+
+function doDriverLogin() {
+  const u = document.getElementById('drv-login-user').value.trim();
+  const p = document.getElementById('drv-login-pass').value;
+  const errEl = document.getElementById('drv-login-error');
+  const found = store.users.find(function(x){ return x.user===u && x.pass===p && x.role==='driver'; });
+  if (!found) { errEl.style.display='block'; return; }
+  errEl.style.display='none';
+  currentUser = found;
+  showDriverPage();
+}
+
+
+// ─── EXPORT / IMPORT ────────────────────────────────────────────
+function exportarParaClientes() {
+  // Export only client users + their CTes + statuses (no driver data, no admin password)
+  var data = {
+    tipo: 'cargotrack-portal-cliente',
+    empresa: (store.empresa && store.empresa.nome) || '',
+    geradoEm: new Date().toISOString(),
+    users: store.users.filter(function(u){ return u.role==='client'; }),
+    clients: store.clients,
+    ctes: store.ctes.map(function(c){
+      // Remove campos internos que o cliente não precisa ver
+      var copy = Object.assign({}, c);
+      delete copy.xmlFile;
+      return copy;
+    }),
+    statuses: store.statuses || [],
+  };
+  var json = JSON.stringify(data, null, 2);
+  var blob = new Blob([json], {type: 'application/json'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  var date = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  a.href = url;
+  a.download = 'cargotrack-cliente-' + date + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  var el = document.getElementById('export-status');
+  if (el) { el.textContent = '✓ Arquivo gerado! Envie para o cliente carregar no Portal do Cliente.'; }
+}
+
+function exportarDados() {
+  var data = JSON.stringify(store, null, 2);
+  var blob = new Blob([data], {type: 'application/json'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  var date = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  a.href = url;
+  a.download = 'ssexpress-' + date + '.ssexpress';
+  a.click();
+  URL.revokeObjectURL(url);
+  var el = document.getElementById('export-status');
+  if (el) { el.textContent = '✓ Arquivo exportado! Envie para o celular via WhatsApp ou e-mail.'; }
+}
+
+function exportarSoMotoristas() {
+  // Export only driver users + CTes assigned to them (no client data)
+  var driverIds = store.users.filter(function(u){ return u.role==='driver'; }).map(function(u){ return u.driverId; });
+  var mini = {
+    users: store.users.filter(function(u){ return u.role==='driver' || u.role==='admin'; }),
+    clients: store.clients,
+    ctes: store.ctes,
+    statuses: store.statuses || [],
+    nextClientId: store.nextClientId,
+    nextDriverId: store.nextDriverId,
+  };
+  var data = JSON.stringify(mini, null, 2);
+  var blob = new Blob([data], {type: 'application/json'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  var date = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  a.href = url;
+  a.download = 'ssexpress-motoristas-' + date + '.ssexpress';
+  a.click();
+  URL.revokeObjectURL(url);
+  var el = document.getElementById('export-status');
+  if (el) { el.textContent = '✓ Arquivo exportado! Envie para o motorista via WhatsApp.'; }
+}
+
+function importarDados(input) {
+  if (!input.files || !input.files[0]) return;
+  var statusEl = document.getElementById('import-status');
+  statusEl.style.color = 'var(--text2)';
+  statusEl.textContent = 'Importando...';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      if (!data.users || !Array.isArray(data.users)) throw new Error('Arquivo inválido');
+      // Merge: keep local data but add imported users/ctes
+      var local = loadStore() || {};
+      // If local has no data yet, use imported directly
+      if (!local.users || local.users.length <= 1) {
+        localStorage.setItem(KEY, JSON.stringify(data));
+        store = data;
+      } else {
+        // Merge users (add new ones that don't exist locally)
+        data.users.forEach(function(u) {
+          if (!local.users.find(function(x){ return x.user === u.user; })) {
+            local.users.push(u);
+          } else {
+            // Update existing user data (password may have changed)
+            var idx = local.users.findIndex(function(x){ return x.user === u.user; });
+            if (idx >= 0) local.users[idx] = u;
+          }
+        });
+        // Merge CTes (add new ones)
+        data.ctes && data.ctes.forEach(function(cte) {
+          if (!local.ctes.find(function(c){ return c.chave === cte.chave; })) {
+            local.ctes.push(cte);
+          } else {
+            // Update existing CTE (status may have changed)
+            var idx = local.ctes.findIndex(function(c){ return c.chave === cte.chave; });
+            if (idx >= 0) local.ctes[idx] = cte;
+          }
+        });
+        // Merge clients
+        data.clients && data.clients.forEach(function(cl) {
+          if (!local.clients.find(function(c){ return c.id === cl.id; })) {
+            local.clients.push(cl);
+          }
+        });
+        if (data.statuses) local.statuses = data.statuses;
+        localStorage.setItem(KEY, JSON.stringify(local));
+        store = local;
+      }
+      statusEl.style.color = 'var(--green)';
+      statusEl.textContent = '✓ Dados importados! Faça login agora.';
+      // Clear password field for fresh login
+      document.getElementById('drv-login-pass').value = '';
+      document.getElementById('drv-login-user').value = '';
+    } catch(err) {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = '✗ Arquivo inválido: ' + err.message;
+    }
+  };
+  reader.readAsText(input.files[0]);
+}
+
+
+</script>
+</body>
+</html>
