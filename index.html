@@ -6,6 +6,7 @@
 <title>SS Express — Rastreio</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   /* Fundos — escala quente de cinza, não preto puro */
@@ -395,6 +396,11 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
             <option>Manifestado</option><option>Em trânsito</option>
             <option>Entregue</option><option>Pendente</option><option>Cancelado</option>
           </select>
+          <input type="date" id="c-data-ini" onchange="filtrarCliente()" title="Data inicial (emissão)" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+          <span style="color:var(--text2);font-size:13px;align-self:center;">até</span>
+          <input type="date" id="c-data-fim" onchange="filtrarCliente()" title="Data final (emissão)" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+          <button class="btn-sm" onclick="limparFiltroData()" title="Limpar datas">✕ datas</button>
+          <button class="btn-blue" onclick="baixarExcelCliente()">📊 Baixar Excel</button>
         </div>
       </div>
       <table><thead><tr><th>Número</th><th>Emissão</th><th>Origem → Destino</th><th>Valor</th><th>Peso</th><th>Situação</th><th></th></tr></thead>
@@ -1063,8 +1069,12 @@ function filtrarCliente() {
   let ctes = cl ? store.ctes.filter(c=>c.clientId===cl.id || cc(c.tomadorCnpj)===cc(cl.cnpj)) : [];
   const q = document.getElementById('c-busca').value.toLowerCase();
   const st = document.getElementById('c-status').value;
+  const dIni = document.getElementById('c-data-ini').value; // 'YYYY-MM-DD' ou ''
+  const dFim = document.getElementById('c-data-fim').value;
   if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q));
   if (st) ctes = ctes.filter(d=>d.status===st);
+  if (dIni) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) >= dIni);
+  if (dFim) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) <= dFim);
   renderClientStats(ctes);
   const tbody = document.getElementById('client-tbody');
   if (!ctes.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhum CTe encontrado</td></tr>'; return; }
@@ -1088,6 +1098,55 @@ function renderClientStats(ctes) {
     <div class="stat-card"><div class="slabel">Em trânsito</div><div class="sval amber">${ctes.filter(c=>c.status==='Em trânsito').length}</div></div>
     <div class="stat-card"><div class="slabel">Entregues</div><div class="sval green">${ctes.filter(c=>c.status==='Entregue').length}</div></div>
     <div class="stat-card"><div class="slabel">Valor total</div><div class="sval" style="font-size:15px">${fmtVal(total)}</div></div>`;
+}
+
+function limparFiltroData() {
+  document.getElementById('c-data-ini').value = '';
+  document.getElementById('c-data-fim').value = '';
+  filtrarCliente();
+}
+
+function baixarExcelCliente() {
+  const cl = store.clients.find(c=>c.id===currentUser.clientId);
+  let ctes = cl ? store.ctes.filter(c=>c.clientId===cl.id || cc(c.tomadorCnpj)===cc(cl.cnpj)) : [];
+  const q = document.getElementById('c-busca').value.toLowerCase();
+  const st = document.getElementById('c-status').value;
+  const dIni = document.getElementById('c-data-ini').value;
+  const dFim = document.getElementById('c-data-fim').value;
+  if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q));
+  if (st) ctes = ctes.filter(d=>d.status===st);
+  if (dIni) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) >= dIni);
+  if (dFim) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) <= dFim);
+  ctes = ctes.slice().sort((a,b)=>b.numero-a.numero);
+
+  if (!ctes.length) { alert('Não há CT-e para exportar com esse filtro.'); return; }
+  if (typeof XLSX === 'undefined') { alert('Não foi possível carregar o gerador de Excel. Verifique sua conexão e tente novamente.'); return; }
+
+  const rows = ctes.map(d => ({
+    'Nº CT-e': d.numero,
+    'Série': d.serie || '',
+    'Data de Emissão': fmtDate(d.dataEmissao),
+    'Origem': d.origem || '',
+    'Destino': d.destino || '',
+    'Endereço de Entrega': d.destEndereco || '',
+    'Valor (R$)': parseFloat(d.valor || 0),
+    'Peso': d.peso || '',
+    'Volumes': d.volumes || '',
+    'Status': d.status || '',
+    'Entregue em': d.status==='Entregue' && d.entregueEm ? fmtDateTime(d.entregueEm) : '',
+    'Observação': d.observacao || '',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:9},{wch:8},{wch:14},{wch:18},{wch:18},{wch:34},{wch:12},{wch:10},{wch:9},{wch:16},{wch:20},{wch:30}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'CTes');
+  const hoje = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  const nomeCliente = (cl ? cl.name : 'entregas').replace(/[^\w\s-]/g,'').trim();
+  const sufixoData = (dIni || dFim) ? `_${dIni||'inicio'}_a_${dFim||'hoje'}` : '';
+  XLSX.writeFile(wb, `ctes-${nomeCliente}${sufixoData}-${hoje}.xlsx`);
 }
 
 // ─── ADMIN ───────────────────────────────────────────────────
