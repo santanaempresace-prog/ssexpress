@@ -1515,7 +1515,7 @@ function openDetail(chave) {
   document.getElementById('modal-grid').insertAdjacentElement('afterend', nfeSec);
   const evts=(d.eventos||[]).slice().sort((a,b)=>(a.dhEvento||'').localeCompare(b.dhEvento||''));
   const base=[{label:'CTe emitido e autorizado',time:fmtDate(d.dataEmissao),done:true},{label:'Manifestado pela transportadora',time:fmtDate(d.dataEmissao),done:d.status!=='Pendente'}];
-  const extras=evts.map(e=>({label:e.label,time:fmtDate(e.dhEvento),done:true}));
+  const extras=evts.map(e=>({label:e.label,time:fmtDateTime(e.dhEvento),done:true}));
   const pending=d.status!=='Entregue'&&d.status!=='Cancelado'?[{label:d.status==='Em trânsito'?'Entregue ao destinatário':'Em trânsito / Entrega',time:null,active:d.status==='Em trânsito'}]:[];
   document.getElementById('modal-tl').innerHTML=[...base,...extras,...pending].map(e=>`
     <div class="tl-item"><div class="tl-dot ${e.done?'done':(e.active?'active':'pending')}"></div>
