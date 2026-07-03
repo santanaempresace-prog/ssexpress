@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 :root{
   /* Fundos — escala quente de cinza, não preto puro */
@@ -307,6 +309,11 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
 </style>
 </head>
 <body>
+<div id="boot-loading" style="position:fixed;inset:0;background:#1a1917;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:14px;">
+  <div style="width:38px;height:38px;border:3px solid #3a3835;border-top-color:#cc0000;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <div style="color:#a09896;font-family:'DM Sans',sans-serif;font-size:13px;" id="boot-loading-text">Carregando dados...</div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
 
 <!-- LOGIN -->
 <div id="page-login" class="page active">
@@ -993,6 +1000,29 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
 <script>
 // ─── STORE ───────────────────────────────────────────────────
 const KEY = 'cargotrack_ssexpress_admin_v1';
+
+// ─── FIREBASE (banco de dados na nuvem) ───────────────────────
+// Preencha com os dados do SEU projeto Firebase (Firebase Console → Configurações do projeto → Seus apps → SDK).
+const firebaseConfig = {
+  apiKey: "SUA_API_KEY_AQUI",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  projectId: "SEU_PROJETO",
+  storageBucket: "SEU_PROJETO.appspot.com",
+  messagingSenderId: "SEU_SENDER_ID",
+  appId: "SEU_APP_ID"
+};
+let db = null;
+let cloudReady = false;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  cloudReady = true;
+} catch(e) {
+  console.warn('Firebase não configurado ainda — usando apenas dados locais.', e);
+}
+const CLOUD_DOC = () => db.collection('cargotrack').doc('store');
+let suppressNextSnapshot = false; // evita reagir ao nosso próprio save()
+
 function defaultStore() {
   return {
     users: [
@@ -1037,7 +1067,60 @@ let store = loadStore();
 let currentUser = null;
 let pendingLink = null;
 
-function save() { localStorage.setItem(KEY, JSON.stringify(store)); }
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(store)); // cache local (funciona offline)
+  pushToCloud();
+}
+
+function pushToCloud() {
+  if (!cloudReady) return;
+  suppressNextSnapshot = true;
+  CLOUD_DOC().set(store).catch(function(e){
+    console.error('Erro ao salvar na nuvem:', e);
+  });
+}
+
+function refreshCurrentView() {
+  // Re-renderiza só a área visível no momento, sem mexer na navegação/formulários abertos
+  if (document.getElementById('page-client').classList.contains('active')) { filtrarCliente(); }
+  else if (document.getElementById('page-admin').classList.contains('active')) { renderDash(); renderAdminCtes(); }
+  else if (document.getElementById('page-driver').classList.contains('active')) { renderDriverList(); }
+}
+
+function bootApp() {
+  const loadingEl = document.getElementById('boot-loading');
+  const loadingText = document.getElementById('boot-loading-text');
+  function finishBoot() { if (loadingEl) loadingEl.style.display = 'none'; }
+
+  if (!cloudReady) { finishBoot(); return; }
+
+  CLOUD_DOC().get().then(function(doc) {
+    if (doc.exists) {
+      store = doc.data();
+      localStorage.setItem(KEY, JSON.stringify(store));
+    } else {
+      // Primeira vez: ainda não existe nada na nuvem — envia os dados locais/padrão pra lá
+      CLOUD_DOC().set(store).catch(function(e){ console.error('Erro ao inicializar dados na nuvem:', e); });
+    }
+    finishBoot();
+
+    // Escuta mudanças em tempo real vindas de outros dispositivos
+    CLOUD_DOC().onSnapshot(function(doc) {
+      if (suppressNextSnapshot) { suppressNextSnapshot = false; return; }
+      if (!doc.exists) return;
+      store = doc.data();
+      localStorage.setItem(KEY, JSON.stringify(store));
+      refreshCurrentView();
+    }, function(err) {
+      console.error('Erro na sincronização em tempo real:', err);
+    });
+  }).catch(function(e) {
+    console.error('Não foi possível conectar à nuvem, usando dados locais:', e);
+    if (loadingText) loadingText.textContent = 'Sem conexão com a nuvem — usando dados salvos neste dispositivo.';
+    setTimeout(finishBoot, 1200);
+  });
+}
+bootApp();
 function cc(s) { return (s||'').replace(/\D/g,''); }
 
 // ─── AUTH ────────────────────────────────────────────────────
