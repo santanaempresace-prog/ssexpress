@@ -333,16 +333,6 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
       <span style="color:var(--border2);font-size:13px;">|</span>
       <button onclick="showDriverLogin()" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;">🚛 Acesso Motorista</button>
     </div>
-
-    <!-- Import data section -->
-    <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border);">
-      <div style="font-size:12px;color:var(--text2);text-align:center;margin-bottom:10px;">Primeira vez neste dispositivo? Importe os dados do sistema:</div>
-      <label style="display:block;width:100%;padding:11px;background:var(--bg3);border:1px dashed var(--border2);border-radius:10px;color:var(--text2);font-size:13px;text-align:center;cursor:pointer;font-family:'DM Sans',sans-serif;">
-        📥 Importar dados (arquivo .ssexpress)
-        <input type="file" accept=".ssexpress,.json" style="display:none;" onchange="importarDados(this,'import-status-login')" />
-      </label>
-      <div id="import-status-login" style="font-size:12px;text-align:center;margin-top:8px;min-height:18px;"></div>
-    </div>
   </div>
 </div>
 
@@ -369,16 +359,6 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
     <div id="drv-login-error" style="display:none;color:var(--red);font-size:13px;margin-top:10px;text-align:center;">Usuário ou senha incorretos.</div>
     <div style="text-align:center;margin-top:16px;">
       <button onclick="showPage('page-login')" style="background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">← Voltar ao login principal</button>
-    </div>
-
-    <!-- Import data section -->
-    <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border);">
-      <div style="font-size:12px;color:var(--text2);text-align:center;margin-bottom:10px;">Primeira vez neste dispositivo? Importe os dados do sistema:</div>
-      <label style="display:block;width:100%;padding:11px;background:var(--bg3);border:1px dashed var(--border2);border-radius:10px;color:var(--text2);font-size:13px;text-align:center;cursor:pointer;font-family:'DM Sans',sans-serif;">
-        📥 Importar dados (arquivo .ssexpress)
-        <input type="file" accept=".ssexpress,.json" style="display:none;" onchange="importarDados(this)" />
-      </label>
-      <div id="import-status" style="font-size:12px;text-align:center;margin-top:8px;min-height:18px;"></div>
     </div>
   </div>
 </div>
@@ -1004,12 +984,12 @@ const KEY = 'cargotrack_ssexpress_admin_v1';
 // ─── FIREBASE (banco de dados na nuvem) ───────────────────────
 // Preencha com os dados do SEU projeto Firebase (Firebase Console → Configurações do projeto → Seus apps → SDK).
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY_AQUI",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  projectId: "SEU_PROJETO",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "SEU_SENDER_ID",
-  appId: "SEU_APP_ID"
+  apiKey: "AIzaSyDQdgdM2Wy-1qtROCwzMOZMgeOHg-jq3FY",
+  authDomain: "ssexpress-ab03d.firebaseapp.com",
+  projectId: "ssexpress-ab03d",
+  storageBucket: "ssexpress-ab03d.firebasestorage.app",
+  messagingSenderId: "24826569166",
+  appId: "1:24826569166:web:467fc3fd75c7d0ec000b9f"
 };
 let db = null;
 let cloudReady = false;
@@ -1087,6 +1067,12 @@ function refreshCurrentView() {
   else if (document.getElementById('page-driver').classList.contains('active')) { renderDriverList(); }
 }
 
+function isStoreEmpty(s) {
+  if (!s) return true;
+  const realUsers = (s.users||[]).filter(function(u){ return !(u.user==='admin' && u.role==='admin'); });
+  return (!s.clients || s.clients.length===0) && (!s.ctes || s.ctes.length===0) && realUsers.length===0;
+}
+
 function bootApp() {
   const loadingEl = document.getElementById('boot-loading');
   const loadingText = document.getElementById('boot-loading-text');
@@ -1094,10 +1080,21 @@ function bootApp() {
 
   if (!cloudReady) { finishBoot(); return; }
 
+  const localStoreAtBoot = store; // dados deste dispositivo, salvos ANTES de qualquer contato com a nuvem
+
   CLOUD_DOC().get().then(function(doc) {
     if (doc.exists) {
-      store = doc.data();
-      localStorage.setItem(KEY, JSON.stringify(store));
+      const cloudStore = doc.data();
+      if (isStoreEmpty(cloudStore) && !isStoreEmpty(localStoreAtBoot)) {
+        // A nuvem está vazia (provavelmente outro dispositivo criou o documento sem dados),
+        // mas ESTE dispositivo tem dados reais. Este dispositivo vira a fonte da verdade
+        // e corrige o documento vazio na nuvem, em vez de perder os dados locais.
+        store = localStoreAtBoot;
+        pushToCloud();
+      } else {
+        store = cloudStore;
+        localStorage.setItem(KEY, JSON.stringify(store));
+      }
     } else {
       // Primeira vez: ainda não existe nada na nuvem — envia os dados locais/padrão pra lá
       CLOUD_DOC().set(store).catch(function(e){ console.error('Erro ao inicializar dados na nuvem:', e); });
@@ -1108,7 +1105,13 @@ function bootApp() {
     CLOUD_DOC().onSnapshot(function(doc) {
       if (suppressNextSnapshot) { suppressNextSnapshot = false; return; }
       if (!doc.exists) return;
-      store = doc.data();
+      const incoming = doc.data();
+      if (isStoreEmpty(incoming) && !isStoreEmpty(store)) {
+        // Proteção extra: nunca aceitar uma atualização vazia vinda de outro dispositivo
+        // se este já tem dados reais carregados.
+        return;
+      }
+      store = incoming;
       localStorage.setItem(KEY, JSON.stringify(store));
       refreshCurrentView();
     }, function(err) {
@@ -2841,66 +2844,6 @@ function exportarSoMotoristas() {
   URL.revokeObjectURL(url);
   var el = document.getElementById('export-status');
   if (el) { el.textContent = '✓ Arquivo exportado! Envie para o motorista via WhatsApp.'; }
-}
-
-function importarDados(input, statusId) {
-  if (!input.files || !input.files[0]) return;
-  var statusEl = document.getElementById(statusId || 'import-status');
-  statusEl.style.color = 'var(--text2)';
-  statusEl.textContent = 'Importando...';
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      var data = JSON.parse(e.target.result);
-      if (!data.users || !Array.isArray(data.users)) throw new Error('Arquivo inválido');
-      // Merge: keep local data but add imported users/ctes
-      var local = loadStore() || {};
-      // If local has no data yet, use imported directly
-      if (!local.users || local.users.length <= 1) {
-        localStorage.setItem(KEY, JSON.stringify(data));
-        store = data;
-      } else {
-        // Merge users (add new ones that don't exist locally)
-        data.users.forEach(function(u) {
-          if (!local.users.find(function(x){ return x.user === u.user; })) {
-            local.users.push(u);
-          } else {
-            // Update existing user data (password may have changed)
-            var idx = local.users.findIndex(function(x){ return x.user === u.user; });
-            if (idx >= 0) local.users[idx] = u;
-          }
-        });
-        // Merge CTes (add new ones)
-        data.ctes && data.ctes.forEach(function(cte) {
-          if (!local.ctes.find(function(c){ return c.chave === cte.chave; })) {
-            local.ctes.push(cte);
-          } else {
-            // Update existing CTE (status may have changed)
-            var idx = local.ctes.findIndex(function(c){ return c.chave === cte.chave; });
-            if (idx >= 0) local.ctes[idx] = cte;
-          }
-        });
-        // Merge clients
-        data.clients && data.clients.forEach(function(cl) {
-          if (!local.clients.find(function(c){ return c.id === cl.id; })) {
-            local.clients.push(cl);
-          }
-        });
-        if (data.statuses) local.statuses = data.statuses;
-        localStorage.setItem(KEY, JSON.stringify(local));
-        store = local;
-      }
-      statusEl.style.color = 'var(--green)';
-      statusEl.textContent = '✓ Dados importados! Faça login agora.';
-      // Clear password field for fresh login
-      document.getElementById('drv-login-pass').value = '';
-      document.getElementById('drv-login-user').value = '';
-    } catch(err) {
-      statusEl.style.color = 'var(--red)';
-      statusEl.textContent = '✗ Arquivo inválido: ' + err.message;
-    }
-  };
-  reader.readAsText(input.files[0]);
 }
 
 
