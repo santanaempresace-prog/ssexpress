@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   /* Fundos — escala quente de cinza, não preto puro */
@@ -1060,6 +1061,103 @@ function pushToCloud() {
   });
 }
 
+function saveXmlToCloud(chave, xmlStr) {
+  if (!cloudReady || !chave || !xmlStr) return;
+  db.collection('cargotrack_xmls').doc(chave).set({ xml: xmlStr, savedAt: new Date().toISOString() })
+    .catch(function(e){ console.error('Erro ao salvar XML do CTe na nuvem:', e); });
+}
+
+function baixarCtePdf(chave) {
+  const d = store.ctes.find(c=>c.chave===chave);
+  if (!d) { alert('CT-e não encontrado.'); return; }
+  if (!window.jspdf) { alert('Não foi possível carregar o gerador de PDF. Verifique sua conexão e tente novamente.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  const marginX = 16;
+  let y = 20;
+
+  // Header
+  doc.setFillColor(204,0,0);
+  doc.rect(0,0,pageW,14,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text('SS Express — Rastreio', marginX, 9.5);
+  doc.setTextColor(0,0,0);
+  y = 24;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(15);
+  doc.text(`Resumo do CT-e nº ${d.numero}${d.serie?' — Série '+d.serie:''}`, marginX, y);
+  y += 6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.setTextColor(120,120,120);
+  doc.text('Documento gerado pelo sistema a partir dos dados importados — não substitui o DACTE oficial.', marginX, y);
+  doc.setTextColor(0,0,0);
+  y += 9;
+  doc.setDrawColor(220,220,220); doc.line(marginX, y, pageW-marginX, y);
+  y += 9;
+
+  function field(label, value, xOff, w) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(120,120,120);
+    doc.text(label.toUpperCase(), marginX+xOff, y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(20,20,20);
+    const lines = doc.splitTextToSize(value || '—', w);
+    doc.text(lines, marginX+xOff, y+5.5);
+    return lines.length;
+  }
+  function row(pairs, w1, w2) {
+    const l1 = field(pairs[0][0], pairs[0][1], 0, w1);
+    const l2 = pairs[1] ? field(pairs[1][0], pairs[1][1], w1+8, w2) : 1;
+    y += Math.max(l1,l2)*5.5 + 7;
+  }
+
+  const halfW = (pageW-2*marginX-8)/2;
+  row([['Data de Emissão', fmtDate(d.dataEmissao)], ['Status Atual', d.status]], halfW, halfW);
+  row([['Origem', d.origem], ['Destino', d.destino]], halfW, halfW);
+  row([['Remetente', d.remNome], ['Destinatário', d.destNome]], halfW, halfW);
+  row([['Valor Total', fmtVal(d.valor)], ['Peso / Volumes', (d.peso||'—')+' / '+(d.volumes||'—')]], halfW, halfW);
+  row([['Endereço de Entrega', d.destEndereco || '—']], pageW-2*marginX, 0);
+  row([['Tomador', (d.tomadorNome||'—')+' — '+fmtCnpj(d.tomadorCnpj||'')]], pageW-2*marginX, 0);
+  if (d.nfeNumeros && d.nfeNumeros.length) {
+    row([['Nota(s) Fiscal(is)', d.nfeNumeros.map(n=>'#'+n).join(', ')]], pageW-2*marginX, 0);
+  }
+  if (d.status==='Entregue' && d.entregueEm) {
+    row([['Entregue em', fmtDateTime(d.entregueEm)]], pageW-2*marginX, 0);
+  }
+  if (d.observacao) {
+    row([['Observação', d.observacao]], pageW-2*marginX, 0);
+  }
+
+  y += 2;
+  doc.setDrawColor(220,220,220); doc.line(marginX, y, pageW-marginX, y);
+  y += 6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Chave de acesso: '+d.chave, marginX, y);
+  y += 5;
+  doc.text('Gerado em '+fmtDateTime(new Date().toISOString()), marginX, y);
+
+  doc.save(`CTe-${d.numero}.pdf`);
+}
+
+function baixarCteXml(chave, numero) {
+  if (!cloudReady) { alert('Sem conexão com a nuvem — não é possível baixar o XML agora.'); return; }
+  db.collection('cargotrack_xmls').doc(chave).get().then(function(doc){
+    if (!doc.exists || !doc.data().xml) {
+      alert('O arquivo XML original deste CT-e não está disponível (pode ter sido importado antes desse recurso existir).');
+      return;
+    }
+    const blob = new Blob([doc.data().xml], {type:'application/xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `CTe-${numero||chave}.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }).catch(function(e){
+    alert('Erro ao buscar o XML: '+e.message);
+  });
+}
+
 function refreshCurrentView() {
   // Re-renderiza só a área visível no momento, sem mexer na navegação/formulários abertos
   if (document.getElementById('page-client').classList.contains('active')) { filtrarCliente(); }
@@ -1182,7 +1280,7 @@ function filtrarCliente() {
       <td>${fmtVal(d.valor)}</td>
       <td style="color:var(--text2)">${d.peso||'—'}</td>
       <td>${badge(d.status)}${d.status==='Entregue'&&d.entregueEm?'<div style="font-size:11px;color:var(--green);margin-top:3px;">✓ '+fmtDateTime(d.entregueEm)+'</div>':''}${d.observacao?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📝 '+d.observacao+'</div>':''}</td>
-      <td><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button></td>
+      <td style="display:flex;gap:4px;"><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button><button class="btn-sm" onclick="baixarCtePdf('${d.chave}')" title="Baixar PDF do CT-e">🧾</button><button class="btn-sm" onclick="baixarCteXml('${d.chave}',${d.numero})" title="Baixar XML do CT-e">📄</button></td>
     </tr>`).join('');
 }
 
@@ -1477,6 +1575,7 @@ function parseCteXml(xmlStr, fname) {
     const client = store.clients.find(c=>cc(c.cnpj)===tomadorCnpj);
     const cte = { chave:chave||`gen-${numero}-${Date.now()}`, numero, serie, dataEmissao, valor, peso, volumes:String(volumes), origem, destino, remNome, destNome, tomadorCnpj, tomadorNome, destCnpj, destCep, destEndereco:destEndFormatado, status:'Manifestado', clientId:client?client.id:null, eventos:[], xmlFile:fname, nfeChaves:nfeChaves, nfeNumeros:nfeNumeros };
     store.ctes.push(cte); save();
+    saveXmlToCloud(cte.chave, xmlStr);
     return {ok:true, msg:`CTe #${numero} importado${client?' → '+client.name:' (sem cliente — vincule na aba CTes)'}`, needsLink:!client, chave:cte.chave, numero};
   } catch(e) { return {ok:false,msg:'Erro: '+e.message}; }
 }
@@ -1590,6 +1689,7 @@ function openDetail(chave) {
     <div class="detail-item full"><div class="di-label">Tomador</div><div class="di-val">${d.tomadorNome||'—'} — ${fmtCnpj(d.tomadorCnpj||'')}</div></div>
     <div class="detail-item full" style="background:rgba(204,0,0,0.06);border-radius:8px;padding:10px 12px;margin-top:2px;"><div class="di-label" style="color:var(--accent)">Nota(s) Fiscal(is)</div><div class="di-val" style="font-size:15px;color:var(--accent)">${fmtNFe(d)}</div></div>
     <div class="detail-item full"><div class="di-label">Chave de acesso CTe</div><div class="di-val" style="font-family:'DM Mono',monospace;font-size:11px;word-break:break-all">${d.chave}</div></div>
+    <div class="detail-item full"><button class="btn-sm" onclick="baixarCtePdf('${d.chave}')" style="margin-right:6px;">🧾 Baixar PDF do CT-e</button><button class="btn-sm" onclick="baixarCteXml('${d.chave}',${d.numero})">📄 Baixar XML do CT-e</button></div>
     <div class="detail-item full" id="nfe-section-placeholder"></div>
   `;
 
