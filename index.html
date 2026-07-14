@@ -388,7 +388,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
       <div class="table-header">
         <span class="table-title">Conhecimentos de Transporte</span>
         <div class="search-row">
-          <input type="text" id="c-busca" placeholder="Número, destino..." oninput="filtrarCliente()" />
+          <input type="text" id="c-busca" placeholder="Nº do CT-e, nº da nota fiscal, destino..." oninput="filtrarCliente()" />
           <select id="c-status" onchange="filtrarCliente()">
             <option value="">Todos os status</option>
             <option>Manifestado</option><option>Em trânsito</option>
@@ -1265,7 +1265,7 @@ function filtrarCliente() {
   const st = document.getElementById('c-status').value;
   const dIni = document.getElementById('c-data-ini').value; // 'YYYY-MM-DD' ou ''
   const dFim = document.getElementById('c-data-fim').value;
-  if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q));
+  if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q)||(d.nfeNumeros&&d.nfeNumeros.some(n=>String(n).includes(q))));
   if (st) ctes = ctes.filter(d=>d.status===st);
   if (dIni) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) >= dIni);
   if (dFim) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) <= dFim);
@@ -1307,7 +1307,7 @@ function baixarExcelCliente() {
   const st = document.getElementById('c-status').value;
   const dIni = document.getElementById('c-data-ini').value;
   const dFim = document.getElementById('c-data-fim').value;
-  if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q));
+  if (q) ctes = ctes.filter(d=>String(d.numero).includes(q)||d.destino.toLowerCase().includes(q)||d.origem.toLowerCase().includes(q)||(d.nfeNumeros&&d.nfeNumeros.some(n=>String(n).includes(q))));
   if (st) ctes = ctes.filter(d=>d.status===st);
   if (dIni) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) >= dIni);
   if (dFim) ctes = ctes.filter(d=> d.dataEmissao && String(d.dataEmissao).substring(0,10) <= dFim);
@@ -1463,7 +1463,7 @@ function renderAdminCtes() {
   const fc=(document.getElementById('admin-fc')||{}).value||'';
   const fs=(document.getElementById('admin-fs')||{}).value||'';
   let ctes=[...store.ctes].sort((a,b)=>b.numero-a.numero);
-  if(q) ctes=ctes.filter(d=>String(d.numero).includes(q)||d.chave.includes(q)||d.destino.toLowerCase().includes(q)||(d.tomadorNome||'').toLowerCase().includes(q));
+  if(q) ctes=ctes.filter(d=>String(d.numero).includes(q)||d.chave.includes(q)||d.destino.toLowerCase().includes(q)||(d.tomadorNome||'').toLowerCase().includes(q)||(d.nfeNumeros&&d.nfeNumeros.some(n=>String(n).includes(q))));
   if(fc) ctes=ctes.filter(c=>c.clientId==fc);
   if(fs) ctes=ctes.filter(c=>c.status===fs);
   const tbody=document.getElementById('admin-ctes-tbody');
