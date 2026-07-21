@@ -1365,6 +1365,11 @@ function bootApp() {
 }
 bootApp();
 
+// Acesso direto do motorista: link/atalho próprio abre já na tela de login dele
+if (new URLSearchParams(window.location.search).has('motorista')) {
+  showDriverLogin();
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('sw.js').catch(function (e) {
