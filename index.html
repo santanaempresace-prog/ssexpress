@@ -1056,7 +1056,18 @@ function save() {
 function pushToCloud() {
   if (!cloudReady) return;
   suppressNextSnapshot = true;
-  CLOUD_DOC().set(store).catch(function(e){
+  // Nunca envia fotos (base64, pesadas) dentro do documento principal — isso estouraria
+  // o limite de 1MB do Firestore e travaria a sincronização de todo mundo.
+  const sanitized = Object.assign({}, store, {
+    ctes: (store.ctes||[]).map(function(c){
+      if (!c.driverPhoto) return c;
+      const copy = Object.assign({}, c);
+      delete copy.driverPhoto;
+      copy.hasDriverPhoto = true;
+      return copy;
+    })
+  });
+  CLOUD_DOC().set(sanitized).catch(function(e){
     console.error('Erro ao salvar na nuvem:', e);
   });
 }
@@ -1065,6 +1076,19 @@ function saveXmlToCloud(chave, xmlStr) {
   if (!cloudReady || !chave || !xmlStr) return;
   db.collection('cargotrack_xmls').doc(chave).set({ xml: xmlStr, savedAt: new Date().toISOString() })
     .catch(function(e){ console.error('Erro ao salvar XML do CTe na nuvem:', e); });
+}
+
+function savePhotoToCloud(chave, dataUrl) {
+  if (!cloudReady || !chave || !dataUrl) return;
+  db.collection('cargotrack_photos').doc(chave).set({ photo: dataUrl, savedAt: new Date().toISOString() })
+    .catch(function(e){ console.error('Erro ao salvar foto na nuvem (pode ser grande demais):', e); });
+}
+
+function fetchPhotoFromCloud(chave) {
+  if (!cloudReady) return Promise.resolve(null);
+  return db.collection('cargotrack_photos').doc(chave).get()
+    .then(function(doc){ return doc.exists ? doc.data().photo : null; })
+    .catch(function(){ return null; });
 }
 
 function baixarCtePdf(chave) {
@@ -1719,7 +1743,7 @@ function openDetail(chave) {
   // Delivery photo section
   var existingPhotoSec = document.getElementById('delivery-photo-sec');
   if (existingPhotoSec) existingPhotoSec.remove();
-  if (d.driverPhoto) {
+  if (d.driverPhoto || d.hasDriverPhoto) {
     var photoSec = document.createElement('div');
     photoSec.id = 'delivery-photo-sec';
     photoSec.style.marginTop = '12px';
@@ -1733,10 +1757,29 @@ function openDetail(chave) {
       + (d.driverPhotoTime ? '<div style="font-size:12px;color:var(--text2)">Horário: '+d.driverPhotoTime+'</div>' : '')
       + '</div>'
       + '</div>'
-      + '<img src="'+d.driverPhoto+'" style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;" class="proof-photo" title="Clique para ampliar" />'
+      + (d.driverPhoto
+          ? '<img src="'+d.driverPhoto+'" style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;" class="proof-photo" title="Clique para ampliar" />'
+          : '<div id="photo-loading-'+d.chave+'" style="font-size:12px;color:var(--text2);text-align:center;padding:20px;">Carregando foto da nuvem...</div>')
       + '<p style="font-size:11px;color:var(--text2);margin-top:6px;text-align:center;">Clique na foto para ampliar</p>'
       + '</div>';
     document.getElementById('modal-tl').insertAdjacentElement('afterend', photoSec);
+    if (!d.driverPhoto) {
+      fetchPhotoFromCloud(d.chave).then(function(photoDataUrl){
+        var loadingEl = document.getElementById('photo-loading-'+d.chave);
+        if (!loadingEl) return; // modal já foi fechado/trocado
+        if (photoDataUrl) {
+          const img = document.createElement('img');
+          img.src = photoDataUrl;
+          img.className = 'proof-photo';
+          img.title = 'Clique para ampliar';
+          img.style.cssText = 'width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;';
+          img.onclick = function(){ window.open(this.src, '_blank'); };
+          loadingEl.replaceWith(img);
+        } else {
+          loadingEl.textContent = 'Não foi possível carregar a foto.';
+        }
+      });
+    }
   }
   document.getElementById('modal-detail').classList.add('open');
   // Attach click handlers to proof photos (can't use inline onclick due to quotes)
@@ -2434,6 +2477,7 @@ function handlePhoto(input) {
     if (!cte) return;
     cte.driverPhoto = dataUrl;
     save();
+    savePhotoToCloud(currentPhotoCardId, dataUrl);
     // Update preview without full re-render
     var prev = document.getElementById('prev-'+currentPhotoCardId);
     if (prev) { prev.src = dataUrl; prev.classList.add('show'); }
@@ -2452,10 +2496,13 @@ function confirmDelivery(chave) {
   var cte = store.ctes.find(function(c){ return c.chave === chave; });
   if (!cte || !cte.driverPhoto) { alert('Tire uma foto do comprovante antes de confirmar.'); return; }
   if (!confirm('Confirmar entrega do CTe #'+cte.numero+'?')) return;
+  var now = new Date().toISOString();
   cte.status = 'Entregue';
+  cte.entregueEm = now;
+  cte.statusUpdatedAt = now;
   cte.driverPhotoTime = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
   cte.eventos = cte.eventos || [];
-  cte.eventos.push({ label:'Entrega confirmada pelo motorista', dhEvento: new Date().toISOString(), seq:'auto' });
+  cte.eventos.push({ label:'Entrega confirmada pelo motorista', dhEvento: now, seq:'auto' });
   save();
   renderDriverList();
 }
