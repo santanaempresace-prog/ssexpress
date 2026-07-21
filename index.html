@@ -736,14 +736,23 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
           </div>
 
           <div class="table-card" style="margin-top:18px;">
-            <div class="table-header"><span class="table-title">📤 Exportar dados para celular</span></div>
+            <div class="table-header"><span class="table-title">📤 Backup de dados</span></div>
             <div style="padding:18px;">
-              <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Para o motorista ou cliente acessar no celular, exporte os dados e importe no dispositivo deles.</p>
+              <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6;">O motorista e o cliente já acessam tudo automaticamente pelo mesmo link, sem precisar importar nada. Use os botões abaixo só para guardar uma cópia de segurança dos dados.</p>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn-blue" onclick="exportarDados()" style="flex:1;">📥 Exportar dados completos</button>
                 <button class="btn-outline" onclick="exportarSoMotoristas()" style="flex:1;">🚛 Exportar só motoristas</button>
               </div>
               <div id="export-status" style="font-size:12px;color:var(--green);margin-top:10px;min-height:18px;"></div>
+            </div>
+          </div>
+
+          <div class="table-card" style="margin-top:18px;">
+            <div class="table-header"><span class="table-title">🧹 Manutenção de espaço (comprovantes)</span></div>
+            <div style="padding:18px;">
+              <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6;">As fotos de comprovante de entrega ocupam a maior parte do espaço no plano gratuito. Use este botão (ex: no fim de cada mês) para baixar todas em um arquivo .zip e liberar espaço na nuvem — os dados da entrega (status, datas, histórico) continuam salvos normalmente, só a foto em si é removida da nuvem.</p>
+              <button class="btn-outline" onclick="limparComprovantesAntigos()" style="width:100%;">📦 Baixar todos os comprovantes (.zip) e liberar espaço</button>
+              <div id="photo-cleanup-status" style="font-size:12px;color:var(--green);margin-top:10px;min-height:18px;"></div>
             </div>
           </div>
         </div>
@@ -1101,6 +1110,100 @@ function fetchPhotoFromCloud(chave) {
     .catch(function(){ return null; });
 }
 
+function limparComprovantesAntigos() {
+  if (!cloudReady) { alert('Sem conexão com a nuvem — não é possível fazer isso agora.'); return; }
+  if (typeof JSZip === 'undefined') { alert('Não foi possível carregar o gerador de ZIP. Verifique sua conexão e tente novamente.'); return; }
+  if (!confirm('Isso vai baixar todos os comprovantes de entrega em um arquivo .zip e, em seguida, apagá-los da nuvem para liberar espaço.\n\nAs entregas continuam registradas normalmente (status, datas, histórico) — só a foto em si será removida.\n\nDeseja continuar?')) return;
+
+  const statusEl = document.getElementById('photo-cleanup-status');
+  statusEl.style.color = 'var(--text2)';
+  statusEl.textContent = 'Buscando comprovantes na nuvem...';
+
+  db.collection('cargotrack_photos').get().then(function(snapshot) {
+    if (snapshot.empty) {
+      statusEl.style.color = 'var(--text2)';
+      statusEl.textContent = 'Nenhum comprovante armazenado no momento.';
+      return;
+    }
+
+    const zip = new JSZip();
+    const docsToDelete = [];
+    let count = 0;
+
+    snapshot.forEach(function(doc) {
+      const chave = doc.id;
+      const data = doc.data();
+      const base64 = (data.photo || '').split(',')[1];
+      if (!base64) return;
+      const cte = store.ctes.find(function(c){ return c.chave === chave; });
+      const numero = cte ? cte.numero : chave.slice(-6);
+      const dataStr = (data.savedAt || '').substring(0,10) || 'sem-data';
+      zip.file(`comprovante-CTe-${numero}-${dataStr}.jpg`, base64, {base64:true});
+      docsToDelete.push(chave);
+      count++;
+    });
+
+    if (count === 0) {
+      statusEl.style.color = 'var(--text2)';
+      statusEl.textContent = 'Nenhum comprovante válido encontrado.';
+      return;
+    }
+
+    statusEl.textContent = `Gerando arquivo .zip com ${count} comprovante(s)...`;
+
+    zip.generateAsync({type:'blob'}).then(function(blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const hoje = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+      a.href = url;
+      a.download = `comprovantes-${hoje}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      statusEl.textContent = 'Arquivo baixado. Limpando a nuvem...';
+
+      // Só apaga da nuvem DEPOIS de gerar o .zip com sucesso
+      const batch = db.batch();
+      docsToDelete.forEach(function(chave) {
+        batch.delete(db.collection('cargotrack_photos').doc(chave));
+        const cte = store.ctes.find(function(c){ return c.chave === chave; });
+        if (cte) {
+          cte.driverPhoto = null;
+          cte.hasDriverPhoto = false;
+          cte.photoArchivedEm = new Date().toISOString();
+        }
+      });
+      batch.commit().then(function() {
+        save();
+        refreshCurrentView();
+        statusEl.style.color = 'var(--green)';
+        statusEl.textContent = `✓ ${count} comprovante(s) baixado(s) e removido(s) da nuvem com sucesso.`;
+      }).catch(function(e) {
+        statusEl.style.color = 'var(--red)';
+        statusEl.textContent = 'Os comprovantes foram baixados, mas houve um erro ao limpar a nuvem: '+e.message;
+      });
+    });
+  }).catch(function(e) {
+    statusEl.style.color = 'var(--red)';
+    statusEl.textContent = 'Erro ao buscar comprovantes: '+e.message;
+  });
+}
+
+function baixarComprovante(chave) {
+  const d = store.ctes.find(function(c){ return c.chave===chave; });
+  if (!d) return;
+  function doDownload(dataUrl) {
+    if (!dataUrl) { alert('Comprovante ainda não disponível — aguarde carregar ou tente novamente.'); return; }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `comprovante-CTe-${d.numero}.jpg`;
+    a.click();
+  }
+  if (d.driverPhoto) { doDownload(d.driverPhoto); }
+  else if (d.hasDriverPhoto) { fetchPhotoFromCloud(chave).then(doDownload); }
+  else { alert('Este CT-e ainda não tem comprovante de entrega.'); }
+}
+
 function baixarCtePdf(chave) {
   const d = store.ctes.find(c=>c.chave===chave);
   if (!d) { alert('CT-e não encontrado.'); return; }
@@ -1197,6 +1300,11 @@ function refreshCurrentView() {
   if (document.getElementById('page-client').classList.contains('active')) { filtrarCliente(); }
   else if (document.getElementById('page-admin').classList.contains('active')) { renderDash(); renderAdminCtes(); }
   else if (document.getElementById('page-driver').classList.contains('active')) { renderDriverList(); }
+  // Se alguém estiver com o detalhe de um CTe aberto na tela, atualiza ele também
+  // (ex: motorista confirma a entrega enquanto o admin/cliente já está olhando aquele CTe)
+  if (currentDetailChave && document.getElementById('modal-detail').classList.contains('open')) {
+    openDetail(currentDetailChave);
+  }
 }
 
 function isStoreEmpty(s) {
@@ -1321,8 +1429,8 @@ function filtrarCliente() {
       <td>${d.origem} → ${d.destino}</td>
       <td>${fmtVal(d.valor)}</td>
       <td style="color:var(--text2)">${d.peso||'—'}</td>
-      <td>${badge(d.status)}${d.status==='Entregue'&&d.entregueEm?'<div style="font-size:11px;color:var(--green);margin-top:3px;">✓ '+fmtDateTime(d.entregueEm)+'</div>':''}${d.observacao?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📝 '+d.observacao+'</div>':''}</td>
-      <td style="display:flex;gap:4px;"><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button><button class="btn-sm" onclick="baixarCtePdf('${d.chave}')" title="Baixar PDF do CT-e">🧾</button><button class="btn-sm" onclick="baixarCteXml('${d.chave}',${d.numero})" title="Baixar XML do CT-e">📄</button></td>
+      <td>${badge(d.status)}${d.status==='Entregue'&&d.entregueEm?'<div style="font-size:11px;color:var(--green);margin-top:3px;">✓ '+fmtDateTime(d.entregueEm)+'</div>':''}${(d.driverPhoto||d.hasDriverPhoto)?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📷 Comprovante disponível</div>':(d.photoArchivedEm?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📦 Comprovante arquivado</div>':'')}${d.observacao?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📝 '+d.observacao+'</div>':''}</td>
+      <td style="display:flex;gap:4px;"><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button><button class="btn-sm" onclick="baixarCtePdf('${d.chave}')" title="Baixar PDF do CT-e">🧾</button><button class="btn-sm" onclick="baixarCteXml('${d.chave}',${d.numero})" title="Baixar XML do CT-e">📄</button>${(d.driverPhoto||d.hasDriverPhoto)?'<button class="btn-sm" onclick="baixarComprovante(\''+d.chave+'\')" title="Baixar comprovante de entrega">⬇️</button>':''}</td>
     </tr>`).join('');
 }
 
@@ -1521,7 +1629,7 @@ function renderAdminCtes() {
     const dest='<td>'+d.destino+'</td>';
     const dt='<td style="color:var(--text2);font-size:12px">'+fmtDate(d.dataEmissao)+'</td>';
     const val='<td>'+fmtVal(d.valor)+'</td>';
-    const stSel='<td><select onchange="updateStatus(this)" data-chave="'+d.chave+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;">'+statusOptionsHtml(d.status)+'</select>'+(d.status==='Entregue'&&d.entregueEm?'<div style="font-size:10px;color:var(--green);margin-top:3px;white-space:nowrap;">✓ '+fmtDateTime(d.entregueEm)+'</div>':'')+'</td>';
+    const stSel='<td><select onchange="updateStatus(this)" data-chave="'+d.chave+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;">'+statusOptionsHtml(d.status)+'</select>'+(d.status==='Entregue'&&d.entregueEm?'<div style="font-size:10px;color:var(--green);margin-top:3px;white-space:nowrap;">✓ '+fmtDateTime(d.entregueEm)+'</div>':'')+((d.driverPhoto||d.hasDriverPhoto)?'<div style="font-size:10px;color:var(--text2);margin-top:2px;white-space:nowrap;">📷 comprovante</div>':(d.photoArchivedEm?'<div style="font-size:10px;color:var(--text2);margin-top:2px;white-space:nowrap;">📦 arquivado</div>':''))+'</td>';
     const cli='<td style="font-size:12px">'+(cl?cl.name:'<span style="color:var(--amber)">Sem cliente</span>')+'</td>';
     const obsBtn='<button class="btn-sm" onclick="editObservacao(\''+d.chave+'\')" title="'+(d.observacao?('Observação: '+d.observacao.replace(/"/g,'&quot;')):'Adicionar observação')+'" style="'+(d.observacao?'color:var(--amber);border-color:var(--amber);':'')+'">📝</button>';
     const btns='<td style="display:flex;gap:4px;">'+obsBtn+(!cl?'<button class="btn-sm" onclick="openLink(\''+d.chave+'\')">Vincular</button>':'')+'<button class="btn-sm danger" onclick="removeCte(\''+d.chave+'\')">×</button></td>';
@@ -1716,8 +1824,10 @@ function offDrag(id){document.getElementById(id).classList.remove('drag');}
 function onDrop(e,tipo){e.preventDefault();offDrag(tipo==='cte'?'zone-cte':'zone-evt');handleFiles(e.dataTransfer.files,tipo);}
 
 // ─── MODAL DETAIL ─────────────────────────────────────────────
+let currentDetailChave = null;
 function openDetail(chave) {
   const d=store.ctes.find(c=>c.chave===chave); if(!d) return;
+  currentDetailChave = chave;
   document.getElementById('modal-num').textContent=`CTe #${d.numero}${d.serie?' — Série '+d.serie:''}`;
   document.getElementById('modal-grid').innerHTML=`
     <div class="detail-item"><div class="di-label">Data emissão</div><div class="di-val">${fmtDate(d.dataEmissao)}</div></div>
@@ -1779,6 +1889,7 @@ function openDetail(chave) {
           ? '<img src="'+d.driverPhoto+'" style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;" class="proof-photo" title="Clique para ampliar" />'
           : '<div id="photo-loading-'+d.chave+'" style="font-size:12px;color:var(--text2);text-align:center;padding:20px;">Carregando foto da nuvem...</div>')
       + '<p style="font-size:11px;color:var(--text2);margin-top:6px;text-align:center;">Clique na foto para ampliar</p>'
+      + (d.driverPhoto ? '<button class="btn-sm" onclick="baixarComprovante(\''+d.chave+'\')" style="width:100%;margin-top:8px;">⬇️ Baixar comprovante</button>' : '<button class="btn-sm" id="btn-baixar-comp-'+d.chave+'" onclick="baixarComprovante(\''+d.chave+'\')" style="width:100%;margin-top:8px;" disabled>⬇️ Baixar comprovante</button>')
       + '</div>';
     document.getElementById('modal-tl').insertAdjacentElement('afterend', photoSec);
     if (!d.driverPhoto) {
@@ -1793,11 +1904,24 @@ function openDetail(chave) {
           img.style.cssText = 'width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;';
           img.onclick = function(){ window.open(this.src, '_blank'); };
           loadingEl.replaceWith(img);
+          var btn = document.getElementById('btn-baixar-comp-'+d.chave);
+          if (btn) btn.disabled = false;
         } else {
           loadingEl.textContent = 'Não foi possível carregar a foto.';
         }
       });
     }
+  } else if (d.photoArchivedEm) {
+    var photoSec2 = document.createElement('div');
+    photoSec2.id = 'delivery-photo-sec';
+    photoSec2.style.marginTop = '12px';
+    photoSec2.innerHTML = '<div class="section-sep">Comprovante de entrega</div>'
+      + '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px;text-align:center;">'
+      + '<span style="font-size:18px;">📦</span>'
+      + '<div style="font-size:13px;font-weight:600;margin-top:4px;">Comprovante arquivado</div>'
+      + '<div style="font-size:12px;color:var(--text2);margin-top:2px;">A foto já foi baixada e removida da nuvem em '+fmtDateTime(d.photoArchivedEm)+' (para economizar espaço).</div>'
+      + '</div>';
+    document.getElementById('modal-tl').insertAdjacentElement('afterend', photoSec2);
   }
   document.getElementById('modal-detail').classList.add('open');
   // Attach click handlers to proof photos (can't use inline onclick due to quotes)
@@ -1822,7 +1946,7 @@ function confirmLink() {
   closeModal('modal-link'); refreshAdmin();
 }
 
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open'); if(id==='modal-detail') currentDetailChave=null;}
 ['modal-detail','modal-link','modal-client','modal-forgot','modal-addr'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeModal(id);}));
 
 // ─── CLIENT MANAGEMENT ───────────────────────────────────────
@@ -2485,29 +2609,57 @@ function openCamera(chave) {
   inp.click();
 }
 
+function compressImage(file, maxDim, quality) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+        else if (h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function handlePhoto(input) {
   if (!input.files || !input.files[0] || !currentPhotoCardId) return;
   var file = input.files[0];
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var dataUrl = e.target.result;
-    var cte = store.ctes.find(function(c){ return c.chave === currentPhotoCardId; });
+  var chave = currentPhotoCardId;
+  // Redimensiona (máx. 1280px no lado maior) e comprime como JPEG — reduz o tamanho
+  // da foto em geral pra menos de 300 KB, importante porque o plano gratuito do
+  // Firebase tem espaço limitado.
+  compressImage(file, 1280, 0.7).then(function(dataUrl) {
+    var cte = store.ctes.find(function(c){ return c.chave === chave; });
     if (!cte) return;
     cte.driverPhoto = dataUrl;
     save();
-    savePhotoToCloud(currentPhotoCardId, dataUrl);
+    savePhotoToCloud(chave, dataUrl);
     // Update preview without full re-render
-    var prev = document.getElementById('prev-'+currentPhotoCardId);
+    var prev = document.getElementById('prev-'+chave);
     if (prev) { prev.src = dataUrl; prev.classList.add('show'); }
     // Enable confirm button
-    var card = document.getElementById('card-'+currentPhotoCardId);
+    var card = document.getElementById('card-'+chave);
     if (card) {
       var confirmBtn = card.querySelector('.btn-confirm');
       if (confirmBtn) confirmBtn.disabled = false;
     }
     currentPhotoCardId = null;
-  };
-  reader.readAsDataURL(file);
+  }).catch(function(err) {
+    console.error('Erro ao comprimir a foto:', err);
+    alert('Não foi possível processar a foto. Tente novamente.');
+    currentPhotoCardId = null;
+  });
 }
 
 function confirmDelivery(chave) {
