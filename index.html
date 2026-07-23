@@ -1011,7 +1011,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
     <div class="cam-frame-wrap">
       <video id="camera-video" autoplay playsinline muted></video>
       <div class="cam-guide"></div>
-      <div class="cam-hint">Alinhe o canhoto da nota dentro da moldura</div>
+      <div class="cam-hint">Vire o celular na horizontal e alinhe o canhoto dentro da moldura</div>
     </div>
     <div class="cam-controls">
       <button class="btn-sm" onclick="closeCameraModal()" style="color:#fff;border-color:rgba(255,255,255,.3);">Cancelar</button>
@@ -2632,11 +2632,14 @@ function badgeClass(s) {
   return map[s] || 'badge-pendente';
 }
 
-// Formato do canhoto: largura ÷ altura. Ajuste este número se o formato real do
-// canhoto que vocês usam for diferente (ex: 1.6 para algo mais quadrado, 2.6 para uma tira mais fina).
-const CANHOTO_ASPECT = 2.2;
+// Formato do canhoto: 21cm de largura por 2,8cm de altura = proporção 7,5:1.
+// Ajuste os dois números abaixo (em cm) se o tamanho real do canhoto de vocês mudar.
+const CANHOTO_LARGURA_CM = 21;
+const CANHOTO_ALTURA_CM = 2.8;
+const CANHOTO_ASPECT = CANHOTO_LARGURA_CM / CANHOTO_ALTURA_CM;
 // Tamanho de saída PADRÃO — toda foto sai exatamente com essas dimensões, não importa o celular.
-const CANHOTO_OUT_W = 1200;
+// 1600px de largura mantém boa nitidez de texto/assinatura mesmo numa faixa fina.
+const CANHOTO_OUT_W = 1600;
 const CANHOTO_OUT_H = Math.round(CANHOTO_OUT_W / CANHOTO_ASPECT);
 
 let cameraStream = null;
