@@ -2648,6 +2648,22 @@ function openCamera(chave) {
   currentPhotoCardId = chave;
   const modal = document.getElementById('camera-modal');
   modal.classList.add('open');
+
+  // Tenta travar a tela em modo paisagem automaticamente (funciona no Android).
+  // No iPhone, o Safari não permite que uma página web trave a rotação — nesse
+  // caso o motorista precisa desativar o bloqueio de rotação do aparelho e girar
+  // o celular manualmente; o resto da captura funciona normalmente do mesmo jeito.
+  function lockLandscape() {
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(function(){ /* não suportado neste aparelho/navegador */ });
+    }
+  }
+  if (modal.requestFullscreen) {
+    modal.requestFullscreen().then(lockLandscape).catch(lockLandscape);
+  } else {
+    lockLandscape();
+  }
+
   navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
     .then(function(stream) {
       cameraStream = stream;
@@ -2679,11 +2695,20 @@ function positionCanhotoGuide() {
 window.addEventListener('resize', function(){
   if (document.getElementById('camera-modal').classList.contains('open')) positionCanhotoGuide();
 });
+window.addEventListener('orientationchange', function(){
+  if (document.getElementById('camera-modal').classList.contains('open')) setTimeout(positionCanhotoGuide, 200);
+});
 
 function closeCameraModal() {
   document.getElementById('camera-modal').classList.remove('open');
   if (cameraStream) { cameraStream.getTracks().forEach(function(t){ t.stop(); }); cameraStream = null; }
   currentPhotoCardId = null;
+  if (screen.orientation && screen.orientation.unlock) {
+    try { screen.orientation.unlock(); } catch(e) {}
+  }
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(function(){});
+  }
 }
 
 function captureFromCamera() {
