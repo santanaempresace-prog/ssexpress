@@ -317,6 +317,16 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
 .addr-tag.no-addr { border-color: var(--amber); color: var(--amber); background: var(--amber-bg); }
 .edit-addr-btn { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 14px; padding: 2px 4px; }
 .edit-addr-btn:hover { color: var(--text); }
+
+.cam-modal{position:fixed;inset:0;background:#000;z-index:10000;display:none;flex-direction:column;}
+.cam-modal.open{display:flex;}
+.cam-frame-wrap{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;}
+#camera-video{width:100%;height:100%;object-fit:cover;}
+.cam-guide{position:absolute;border:2px dashed #fff;border-radius:6px;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.55);}
+.cam-hint{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;text-shadow:0 1px 4px rgba(0,0,0,.7);padding:0 20px;}
+.cam-controls{background:#000;padding:20px 18px;display:flex;align-items:center;justify-content:space-between;}
+.cam-shutter{width:66px;height:66px;border-radius:50%;background:#fff;border:4px solid #888;cursor:pointer;flex-shrink:0;}
+.cam-shutter:active{background:#ddd;}
 </style>
 </head>
 <body>
@@ -995,6 +1005,21 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
 
   <!-- Hidden file inputs for camera per card -->
   <input type="file" accept="image/*" capture="environment" class="hidden-file" id="cam-input" onchange="handlePhoto(this)" />
+
+  <!-- Câmera personalizada: moldura no formato do canhoto, tamanho de saída padronizado -->
+  <div id="camera-modal" class="cam-modal">
+    <div class="cam-frame-wrap">
+      <video id="camera-video" autoplay playsinline muted></video>
+      <div class="cam-guide"></div>
+      <div class="cam-hint">Alinhe o canhoto da nota dentro da moldura</div>
+    </div>
+    <div class="cam-controls">
+      <button class="btn-sm" onclick="closeCameraModal()" style="color:#fff;border-color:rgba(255,255,255,.3);">Cancelar</button>
+      <button class="cam-shutter" onclick="captureFromCamera()" aria-label="Capturar foto"></button>
+      <div style="width:70px"></div>
+    </div>
+    <canvas id="camera-canvas" style="display:none;"></canvas>
+  </div>
 </div>
 
 <script>
@@ -2607,11 +2632,101 @@ function badgeClass(s) {
   return map[s] || 'badge-pendente';
 }
 
+// Formato do canhoto: largura ÷ altura. Ajuste este número se o formato real do
+// canhoto que vocês usam for diferente (ex: 1.6 para algo mais quadrado, 2.6 para uma tira mais fina).
+const CANHOTO_ASPECT = 2.2;
+// Tamanho de saída PADRÃO — toda foto sai exatamente com essas dimensões, não importa o celular.
+const CANHOTO_OUT_W = 1200;
+const CANHOTO_OUT_H = Math.round(CANHOTO_OUT_W / CANHOTO_ASPECT);
+
+let cameraStream = null;
+
 function openCamera(chave) {
   currentPhotoCardId = chave;
-  var inp = document.getElementById('cam-input');
-  inp.value = '';
-  inp.click();
+  const modal = document.getElementById('camera-modal');
+  modal.classList.add('open');
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    .then(function(stream) {
+      cameraStream = stream;
+      const video = document.getElementById('camera-video');
+      video.srcObject = stream;
+      video.onloadedmetadata = function(){ positionCanhotoGuide(); };
+    })
+    .catch(function(err) {
+      console.warn('Câmera personalizada indisponível, usando captura padrão do celular:', err);
+      modal.classList.remove('open');
+      var inp = document.getElementById('cam-input');
+      inp.value = '';
+      inp.click();
+    });
+}
+
+function positionCanhotoGuide() {
+  const wrap = document.querySelector('.cam-frame-wrap');
+  const guide = document.querySelector('.cam-guide');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  let gw = w * 0.88;
+  let gh = gw / CANHOTO_ASPECT;
+  if (gh > h * 0.75) { gh = h * 0.75; gw = gh * CANHOTO_ASPECT; }
+  guide.style.width = gw + 'px';
+  guide.style.height = gh + 'px';
+  guide.style.left = ((w - gw) / 2) + 'px';
+  guide.style.top = ((h - gh) / 2) + 'px';
+}
+window.addEventListener('resize', function(){
+  if (document.getElementById('camera-modal').classList.contains('open')) positionCanhotoGuide();
+});
+
+function closeCameraModal() {
+  document.getElementById('camera-modal').classList.remove('open');
+  if (cameraStream) { cameraStream.getTracks().forEach(function(t){ t.stop(); }); cameraStream = null; }
+  currentPhotoCardId = null;
+}
+
+function captureFromCamera() {
+  const video = document.getElementById('camera-video');
+  const wrap = document.querySelector('.cam-frame-wrap');
+  const guide = document.querySelector('.cam-guide');
+  const wrapRect = wrap.getBoundingClientRect();
+  const guideRect = guide.getBoundingClientRect();
+  const videoW = video.videoWidth, videoH = video.videoHeight;
+
+  // O vídeo usa object-fit:cover — calcula a escala real pra saber que pedaço
+  // do sensor da câmera corresponde exatamente à moldura mostrada na tela.
+  const scale = Math.max(wrapRect.width / videoW, wrapRect.height / videoH);
+  const displayedW = videoW * scale, displayedH = videoH * scale;
+  const offsetX = (wrapRect.width - displayedW) / 2;
+  const offsetY = (wrapRect.height - displayedH) / 2;
+  const sx = (guideRect.left - wrapRect.left - offsetX) / scale;
+  const sy = (guideRect.top - wrapRect.top - offsetY) / scale;
+  const sw = guideRect.width / scale;
+  const sh = guideRect.height / scale;
+
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width = CANHOTO_OUT_W; canvas.height = CANHOTO_OUT_H;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, CANHOTO_OUT_W, CANHOTO_OUT_H);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+  const chave = currentPhotoCardId;
+  closeCameraModal();
+  savePhotoResult(chave, dataUrl);
+}
+
+function savePhotoResult(chave, dataUrl) {
+  if (!chave) return;
+  const cte = store.ctes.find(function(c){ return c.chave === chave; });
+  if (!cte) return;
+  cte.driverPhoto = dataUrl;
+  save();
+  savePhotoToCloud(chave, dataUrl);
+  const prev = document.getElementById('prev-'+chave);
+  if (prev) { prev.src = dataUrl; prev.classList.add('show'); }
+  const card = document.getElementById('card-'+chave);
+  if (card) {
+    const confirmBtn = card.querySelector('.btn-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
 }
 
 function compressImage(file, maxDim, quality) {
@@ -2641,29 +2756,15 @@ function handlePhoto(input) {
   if (!input.files || !input.files[0] || !currentPhotoCardId) return;
   var file = input.files[0];
   var chave = currentPhotoCardId;
-  // Redimensiona (máx. 1280px no lado maior) e comprime como JPEG — reduz o tamanho
-  // da foto em geral pra menos de 300 KB, importante porque o plano gratuito do
-  // Firebase tem espaço limitado.
+  currentPhotoCardId = null;
+  // Fallback (câmera personalizada indisponível): redimensiona e comprime,
+  // mas sem o recorte exato no formato do canhoto (o app nativo do celular
+  // não permite controlar isso).
   compressImage(file, 1280, 0.7).then(function(dataUrl) {
-    var cte = store.ctes.find(function(c){ return c.chave === chave; });
-    if (!cte) return;
-    cte.driverPhoto = dataUrl;
-    save();
-    savePhotoToCloud(chave, dataUrl);
-    // Update preview without full re-render
-    var prev = document.getElementById('prev-'+chave);
-    if (prev) { prev.src = dataUrl; prev.classList.add('show'); }
-    // Enable confirm button
-    var card = document.getElementById('card-'+chave);
-    if (card) {
-      var confirmBtn = card.querySelector('.btn-confirm');
-      if (confirmBtn) confirmBtn.disabled = false;
-    }
-    currentPhotoCardId = null;
+    savePhotoResult(chave, dataUrl);
   }).catch(function(err) {
     console.error('Erro ao comprimir a foto:', err);
     alert('Não foi possível processar a foto. Tente novamente.');
-    currentPhotoCardId = null;
   });
 }
 
