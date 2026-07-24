@@ -973,11 +973,11 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
     <div class="driver-stats">
       <div class="driver-stat">
         <div class="ds-val" id="ds-total">0</div>
-        <div class="ds-lbl">Total</div>
+        <div class="ds-lbl">Na rota hoje</div>
       </div>
       <div class="driver-stat">
         <div class="ds-val" id="ds-done" style="color:var(--green)">0</div>
-        <div class="ds-lbl">Entregues</div>
+        <div class="ds-lbl">Entregues hoje</div>
       </div>
       <div class="driver-stat">
         <div class="ds-val" id="ds-pend" style="color:var(--amber)">0</div>
@@ -997,7 +997,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
     <div class="filter-tabs">
       <button class="filter-tab active" onclick="setDriverFilter('all',this)">Todos</button>
       <button class="filter-tab" onclick="setDriverFilter('pending',this)">Pendentes</button>
-      <button class="filter-tab" onclick="setDriverFilter('done',this)">Entregues</button>
+      <button class="filter-tab" onclick="setDriverFilter('done',this)">Entregues hoje</button>
     </div>
 
     <div id="driver-list"></div>
@@ -2474,9 +2474,25 @@ function setDriverFilter(f, btn) {
   renderDriverList();
 }
 
+function isToday(isoDateStr) {
+  if (!isoDateStr) return false;
+  var d = new Date(isoDateStr);
+  if (isNaN(d)) return false;
+  var now = new Date();
+  return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
+}
+
 function renderDriverList() {
   var driverId = currentUser.driverId;
-  var allMyCtes = store.ctes.filter(function(c){ return c.driverId === driverId; });
+  var allAssigned = store.ctes.filter(function(c){ return c.driverId === driverId; });
+  // Mostra tudo que ainda está pendente (precisa de ação do motorista) + o que já foi
+  // finalizado (Entregue/Devolvido) HOJE. Entregas finalizadas em dias anteriores ficam
+  // fora da lista, pra não acumular e atrapalhar com o volume ao longo do tempo.
+  var allMyCtes = allAssigned.filter(function(c){
+    var finalizado = c.status === 'Entregue' || c.status === 'Devolvido';
+    if (!finalizado) return true;
+    return isToday(c.entregueEm || c.statusUpdatedAt);
+  });
   // Sort by routeOrder
   allMyCtes.sort(function(a,b){ return (a.routeOrder||999) - (b.routeOrder||999); });
 
