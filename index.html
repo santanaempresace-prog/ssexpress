@@ -809,6 +809,39 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
 </div>
 
 <!-- ADDRESS EDIT MODAL -->
+<div class="modal-overlay" id="modal-obs">
+  <div class="modal" style="width:460px;">
+    <div class="modal-head">
+      <h3 id="obs-modal-title">Observação</h3>
+      <button class="modal-close" onclick="closeModal('modal-obs')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px;">
+        Use para registrar ocorrências como loja fechada, endereço não encontrado, recusa de recebimento, etc. Anexar uma foto ajuda a comprovar a situação.
+      </p>
+      <div class="form-field" style="margin-bottom:14px;">
+        <label>Texto da observação</label>
+        <textarea id="obs-texto" rows="3" placeholder="Ex: Loja fechada no horário da entrega, tentaremos novamente amanhã." style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;margin-top:4px;resize:vertical;"></textarea>
+      </div>
+      <div class="form-field" style="margin-bottom:14px;">
+        <label>Foto (opcional)</label>
+        <div style="margin-top:6px;">
+          <img id="obs-photo-preview" style="display:none;width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;" />
+          <div id="obs-photo-status" style="font-size:12px;color:var(--text2);margin-bottom:8px;"></div>
+          <div style="display:flex;gap:8px;">
+            <label class="btn-sm" style="flex:1;text-align:center;cursor:pointer;">
+              📷 Escolher foto
+              <input type="file" accept="image/*" id="obs-photo-input" style="display:none;" onchange="handleObsPhotoSelected(this)">
+            </label>
+            <button class="btn-sm" id="obs-photo-remove-btn" onclick="removeObsPhoto()" style="display:none;">Remover foto</button>
+          </div>
+        </div>
+      </div>
+      <button class="btn-blue" onclick="saveObservacao()" style="width:100%;">Salvar observação</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-addr">
   <div class="modal" style="width:480px;">
     <div class="modal-head">
@@ -1104,10 +1137,10 @@ function pushToCloud() {
   // o limite de 1MB do Firestore e travaria a sincronização de todo mundo.
   const sanitized = Object.assign({}, store, {
     ctes: (store.ctes||[]).map(function(c){
-      if (!c.driverPhoto) return c;
+      if (!c.driverPhoto && !c.obsPhoto) return c;
       const copy = Object.assign({}, c);
-      delete copy.driverPhoto;
-      copy.hasDriverPhoto = true;
+      if (copy.driverPhoto) { delete copy.driverPhoto; copy.hasDriverPhoto = true; }
+      if (copy.obsPhoto) { delete copy.obsPhoto; copy.hasObsPhoto = true; }
       return copy;
     })
   });
@@ -1459,7 +1492,7 @@ function filtrarCliente() {
       <td>${d.origem} → ${d.destino}</td>
       <td>${fmtVal(d.valor)}</td>
       <td style="color:var(--text2)">${d.peso||'—'}</td>
-      <td>${badge(d.status)}${d.status==='Entregue'&&d.entregueEm?'<div style="font-size:11px;color:var(--green);margin-top:3px;">✓ '+fmtDateTime(d.entregueEm)+'</div>':''}${(d.driverPhoto||d.hasDriverPhoto)?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📷 Comprovante disponível</div>':(d.photoArchivedEm?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📦 Comprovante arquivado</div>':'')}${d.observacao?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📝 '+d.observacao+'</div>':''}</td>
+      <td>${badge(d.status)}${d.status==='Entregue'&&d.entregueEm?'<div style="font-size:11px;color:var(--green);margin-top:3px;">✓ '+fmtDateTime(d.entregueEm)+'</div>':''}${(d.driverPhoto||d.hasDriverPhoto)?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📷 Comprovante disponível</div>':(d.photoArchivedEm?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📦 Comprovante arquivado</div>':'')}${d.observacao?'<div style="font-size:11px;color:var(--text2);margin-top:3px;">📝 '+d.observacao+((d.obsPhoto||d.hasObsPhoto)?' 📎':'')+'</div>':''}</td>
       <td style="display:flex;gap:4px;"><button class="btn-sm" onclick="openDetail('${d.chave}')">Detalhar</button><button class="btn-sm" onclick="baixarCtePdf('${d.chave}')" title="Baixar PDF do CT-e">🧾</button><button class="btn-sm" onclick="baixarCteXml('${d.chave}',${d.numero})" title="Baixar XML do CT-e">📄</button>${(d.driverPhoto||d.hasDriverPhoto)?'<button class="btn-sm" onclick="baixarComprovante(\''+d.chave+'\')" title="Baixar comprovante de entrega">⬇️</button>':''}</td>
     </tr>`).join('');
 }
@@ -1661,7 +1694,7 @@ function renderAdminCtes() {
     const val='<td>'+fmtVal(d.valor)+'</td>';
     const stSel='<td><select onchange="updateStatus(this)" data-chave="'+d.chave+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;">'+statusOptionsHtml(d.status)+'</select>'+(d.status==='Entregue'&&d.entregueEm?'<div style="font-size:10px;color:var(--green);margin-top:3px;white-space:nowrap;">✓ '+fmtDateTime(d.entregueEm)+'</div>':'')+((d.driverPhoto||d.hasDriverPhoto)?'<div style="font-size:10px;color:var(--text2);margin-top:2px;white-space:nowrap;">📷 comprovante</div>':(d.photoArchivedEm?'<div style="font-size:10px;color:var(--text2);margin-top:2px;white-space:nowrap;">📦 arquivado</div>':''))+'</td>';
     const cli='<td style="font-size:12px">'+(cl?cl.name:'<span style="color:var(--amber)">Sem cliente</span>')+'</td>';
-    const obsBtn='<button class="btn-sm" onclick="editObservacao(\''+d.chave+'\')" title="'+(d.observacao?('Observação: '+d.observacao.replace(/"/g,'&quot;')):'Adicionar observação')+'" style="'+(d.observacao?'color:var(--amber);border-color:var(--amber);':'')+'">📝</button>';
+    const obsBtn='<button class="btn-sm" onclick="editObservacao(\''+d.chave+'\')" title="'+(d.observacao?('Observação: '+d.observacao.replace(/"/g,'&quot;')):'Adicionar observação')+'" style="'+(d.observacao?'color:var(--amber);border-color:var(--amber);':'')+'">📝'+((d.obsPhoto||d.hasObsPhoto)?'📎':'')+'</button>';
     const btns='<td style="display:flex;gap:4px;">'+obsBtn+(!cl?'<button class="btn-sm" onclick="openLink(\''+d.chave+'\')">Vincular</button>':'')+'<button class="btn-sm danger" onclick="removeCte(\''+d.chave+'\')">×</button></td>';
     return '<tr style="'+bg+'">'+chk+num+nfTd+tom+dest+dt+val+stSel+cli+btns+'</tr>';
   });
@@ -1953,6 +1986,41 @@ function openDetail(chave) {
       + '</div>';
     document.getElementById('modal-tl').insertAdjacentElement('afterend', photoSec2);
   }
+
+  // Observation photo section (ex: loja fechada, endereço não encontrado, etc.)
+  var existingObsSec = document.getElementById('obs-photo-sec');
+  if (existingObsSec) existingObsSec.remove();
+  if (d.observacao || d.obsPhoto || d.hasObsPhoto) {
+    var obsSec = document.createElement('div');
+    obsSec.id = 'obs-photo-sec';
+    obsSec.style.marginTop = '12px';
+    obsSec.innerHTML = '<div class="section-sep">Observação</div>'
+      + '<div style="background:var(--bg3);border:1px solid var(--amber);border-radius:var(--radius-lg);padding:12px;">'
+      + (d.observacao ? '<div style="font-size:13px;margin-bottom:'+((d.obsPhoto||d.hasObsPhoto)?'10px':'0')+';">📝 '+d.observacao+'</div>' : '')
+      + (d.obsPhoto
+          ? '<img src="'+d.obsPhoto+'" style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;" class="proof-photo" title="Clique para ampliar" />'
+          : (d.hasObsPhoto ? '<div id="obs-detail-loading-'+d.chave+'" style="font-size:12px;color:var(--text2);text-align:center;padding:16px;">Carregando foto da nuvem...</div>' : ''))
+      + '</div>';
+    document.getElementById('modal-tl').insertAdjacentElement('afterend', obsSec);
+    if (!d.obsPhoto && d.hasObsPhoto) {
+      fetchObsPhotoFromCloud(d.chave).then(function(photoDataUrl){
+        var loadingEl = document.getElementById('obs-detail-loading-'+d.chave);
+        if (!loadingEl) return;
+        if (photoDataUrl) {
+          const img = document.createElement('img');
+          img.src = photoDataUrl;
+          img.className = 'proof-photo';
+          img.title = 'Clique para ampliar';
+          img.style.cssText = 'width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer;';
+          img.onclick = function(){ window.open(this.src, '_blank'); };
+          loadingEl.replaceWith(img);
+        } else {
+          loadingEl.textContent = 'Não foi possível carregar a foto.';
+        }
+      });
+    }
+  }
+
   document.getElementById('modal-detail').classList.add('open');
   // Attach click handlers to proof photos (can't use inline onclick due to quotes)
   document.querySelectorAll('.proof-photo').forEach(function(img){
@@ -2223,15 +2291,105 @@ function updateStatus(el) {
 
   save();renderAdminStats();renderDash();renderAdminCtes();
 }
+let obsCurrentChave = null;
+let obsPendingPhoto = null; // dataUrl da foto nova selecionada (ainda não salva)
+let obsRemovePhoto = false; // marca que o usuário pediu pra remover a foto existente
+
 function editObservacao(chave) {
-  const cte = store.ctes.find(function(c){return c.chave===chave;});
-  if(!cte) return;
-  const obs = window.prompt('Observação para o CTe #'+cte.numero+' ('+cte.destino+'):', cte.observacao||'');
-  if(obs === null) return; // cancelado
-  cte.observacao = obs.trim();
+  const cte = store.ctes.find(function(c){ return c.chave===chave; });
+  if (!cte) return;
+  obsCurrentChave = chave;
+  obsPendingPhoto = null;
+  obsRemovePhoto = false;
+
+  document.getElementById('obs-modal-title').textContent = 'Observação — CTe #'+cte.numero+' ('+cte.destino+')';
+  document.getElementById('obs-texto').value = cte.observacao || '';
+  document.getElementById('obs-photo-input').value = '';
+  document.getElementById('obs-photo-status').textContent = '';
+
+  const preview = document.getElementById('obs-photo-preview');
+  const removeBtn = document.getElementById('obs-photo-remove-btn');
+  preview.style.display = 'none';
+  removeBtn.style.display = 'none';
+
+  if (cte.obsPhoto) {
+    preview.src = cte.obsPhoto; preview.style.display = 'block'; removeBtn.style.display = 'block';
+  } else if (cte.hasObsPhoto) {
+    document.getElementById('obs-photo-status').textContent = 'Carregando foto salva...';
+    fetchObsPhotoFromCloud(chave).then(function(dataUrl){
+      if (dataUrl) {
+        preview.src = dataUrl; preview.style.display = 'block'; removeBtn.style.display = 'block';
+        document.getElementById('obs-photo-status').textContent = '';
+      } else {
+        document.getElementById('obs-photo-status').textContent = 'Não foi possível carregar a foto salva.';
+      }
+    });
+  }
+
+  document.getElementById('modal-obs').classList.add('open');
+}
+
+function handleObsPhotoSelected(input) {
+  if (!input.files || !input.files[0]) return;
+  document.getElementById('obs-photo-status').textContent = 'Processando foto...';
+  compressImage(input.files[0], 1280, 0.75).then(function(dataUrl) {
+    obsPendingPhoto = dataUrl;
+    obsRemovePhoto = false;
+    const preview = document.getElementById('obs-photo-preview');
+    preview.src = dataUrl; preview.style.display = 'block';
+    document.getElementById('obs-photo-remove-btn').style.display = 'block';
+    document.getElementById('obs-photo-status').textContent = '';
+  }).catch(function(){
+    document.getElementById('obs-photo-status').textContent = 'Não foi possível processar a foto.';
+  });
+}
+
+function removeObsPhoto() {
+  obsPendingPhoto = null;
+  obsRemovePhoto = true;
+  document.getElementById('obs-photo-preview').style.display = 'none';
+  document.getElementById('obs-photo-remove-btn').style.display = 'none';
+  document.getElementById('obs-photo-status').textContent = 'A foto será removida ao salvar.';
+}
+
+function saveObservacao() {
+  const cte = store.ctes.find(function(c){ return c.chave===obsCurrentChave; });
+  if (!cte) return;
+  const obs = document.getElementById('obs-texto').value.trim();
+
+  cte.observacao = obs;
   cte.eventos = cte.eventos || [];
-  cte.eventos.push({ label: obs.trim() ? 'Observação atualizada: '+obs.trim() : 'Observação removida', dhEvento: new Date().toISOString(), seq:'manual', obs: obs.trim() });
-  save(); renderAdminCtes();
+  let label = obs ? 'Observação atualizada: '+obs : 'Observação removida';
+
+  if (obsPendingPhoto) {
+    cte.obsPhoto = obsPendingPhoto;
+    cte.hasObsPhoto = true;
+    saveObsPhotoToCloud(cte.chave, obsPendingPhoto);
+    label += ' (com foto anexada)';
+  } else if (obsRemovePhoto) {
+    cte.obsPhoto = null;
+    cte.hasObsPhoto = false;
+    if (cloudReady) db.collection('cargotrack_obs_photos').doc(cte.chave).delete().catch(function(){});
+    label += ' (foto removida)';
+  }
+
+  cte.eventos.push({ label: label, dhEvento: new Date().toISOString(), seq: 'manual', obs: obs });
+  save();
+  closeModal('modal-obs');
+  renderAdminCtes();
+}
+
+function saveObsPhotoToCloud(chave, dataUrl) {
+  if (!cloudReady || !chave || !dataUrl) return;
+  db.collection('cargotrack_obs_photos').doc(chave).set({ photo: dataUrl, savedAt: new Date().toISOString() })
+    .catch(function(e){ console.error('Erro ao salvar foto da observação na nuvem:', e); });
+}
+
+function fetchObsPhotoFromCloud(chave) {
+  if (!cloudReady) return Promise.resolve(null);
+  return db.collection('cargotrack_obs_photos').doc(chave).get()
+    .then(function(doc){ return doc.exists ? doc.data().photo : null; })
+    .catch(function(){ return null; });
 }
 function removeCte(chave) {
   if(!confirm('Excluir este CTe?')) return;
