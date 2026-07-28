@@ -455,8 +455,12 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
         <div class="table-header">
           <span class="table-title">CTes recentes</span>
           <div class="search-row">
+            <input type="text" id="dash-busca" placeholder="Buscar por número da nota (NF-e)..." oninput="renderDash()" />
+            <input type="date" id="dash-data-de" onchange="renderDash()" title="Emissão de" />
+            <input type="date" id="dash-data-ate" onchange="renderDash()" title="Emissão até" />
             <select id="dash-fc" onchange="renderDash()"><option value="">Todos os clientes</option></select>
             <select id="dash-fs" onchange="renderDash()"><option value="">Todos os status</option><option>Manifestado</option><option>Em trânsito</option><option>Entregue</option><option>Pendente</option><option>Cancelado</option></select>
+            <button class="btn-outline" onclick="limparFiltrosDash()" style="padding:7px 14px;font-size:13px;">Limpar filtros</button>
           </div>
         </div>
         <table><thead><tr><th>Número</th><th>Tomador</th><th>Destino</th><th>Emissão</th><th>Valor</th><th>Situação</th><th></th></tr></thead>
@@ -1294,19 +1298,61 @@ function baixarComprovante(chave) {
   function doDownloadAll(photosArr) {
     var validPhotos = (photosArr||[]).filter(Boolean);
     if (!validPhotos.length) { alert('Comprovante ainda não disponível — aguarde carregar ou tente novamente.'); return; }
-    validPhotos.forEach(function(dataUrl, i){
-      setTimeout(function(){
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = validPhotos.length > 1 ? `comprovante-CTe-${d.numero}-${i+1}.jpg` : `comprovante-CTe-${d.numero}.jpg`;
-        a.click();
-      }, i * 300); // pequeno intervalo entre downloads pra evitar bloqueio do navegador
-    });
+    gerarPdfComprovantes(d, validPhotos);
   }
   const localPhotos = getDriverPhotosArr(d);
   if (localPhotos.length >= getRequiredPhotoSlots(d)) { doDownloadAll(localPhotos); }
   else if (hasAnyPhoto(d)) { fetchPhotosFromCloud(chave).then(doDownloadAll); }
   else { alert('Este CT-e ainda não tem comprovante de entrega.'); }
+}
+
+// Junta todas as fotos de comprovante de um CT-e em um único PDF (evita o navegador
+// bloquear downloads múltiplos quando há mais de uma nota/canhoto por CT-e).
+function gerarPdfComprovantes(d, photos) {
+  if (!window.jspdf) { alert('Não foi possível carregar o gerador de PDF. Verifique sua conexão e tente novamente.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 10;
+
+  function fmtOf(src) { return /^data:image\/png/i.test(src) ? 'PNG' : 'JPEG'; }
+  function loadDims(src) {
+    return new Promise(function(resolve){
+      const img = new Image();
+      img.onload = function(){ resolve({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 }); };
+      img.onerror = function(){ resolve({ w: 1, h: 1 }); };
+      img.src = src;
+    });
+  }
+
+  Promise.all(photos.map(loadDims)).then(function(dimsArr){
+    photos.forEach(function(src, i){
+      if (i > 0) doc.addPage();
+      doc.setFillColor(204,0,0);
+      doc.rect(0,0,pageW,12,'F');
+      doc.setTextColor(255,255,255);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text('SS Express — Comprovante de Entrega', marginX, 8);
+      doc.setTextColor(90,90,90);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      var nfPart = (d.nfeNumeros && d.nfeNumeros.length) ? ' — NF-e ' + d.nfeNumeros.join(', ') : '';
+      var countPart = photos.length > 1 ? ' — Comprovante ' + (i+1) + '/' + photos.length : '';
+      doc.text('CT-e nº ' + d.numero + nfPart + countPart, marginX, 20);
+      doc.setTextColor(0,0,0);
+
+      const availW = pageW - marginX*2;
+      const availH = pageH - 30;
+      const dims = dimsArr[i];
+      let w = availW, h = w * (dims.h/dims.w);
+      if (h > availH) { h = availH; w = h * (dims.w/dims.h); }
+      const x = (pageW - w) / 2;
+      const y = 26;
+      try { doc.addImage(src, fmtOf(src), x, y, w, h); }
+      catch(e) { doc.setTextColor(200,0,0); doc.text('Não foi possível incluir esta imagem.', marginX, y+10); }
+    });
+    doc.save('comprovante-CTe-' + d.numero + '.pdf');
+  });
 }
 
 function baixarCtePdf(chave) {
@@ -1636,18 +1682,45 @@ function renderAdminStats() {
     <div class="stat-card"><div class="slabel">Sem cliente</div><div class="sval amber">${a.filter(c=>!c.clientId).length}</div></div>
     <div class="stat-card"><div class="slabel">Valor total</div><div class="sval" style="font-size:14px">${fmtVal(total)}</div></div>`;
 }
+function dataOnlyKey(iso) {
+  try {
+    const dt = new Date(iso);
+    if (isNaN(dt)) return '';
+    const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+day;
+  } catch(e) { return ''; }
+}
+
 function renderDash() {
   const fc=(document.getElementById('dash-fc')||{}).value||'';
   const fs=(document.getElementById('dash-fs')||{}).value||'';
+  const q=(document.getElementById('dash-busca')||{}).value?.trim().toLowerCase()||'';
+  const dDe=(document.getElementById('dash-data-de')||{}).value||'';
+  const dAte=(document.getElementById('dash-data-ate')||{}).value||'';
   let ctes=[...store.ctes].sort((a,b)=>b.numero-a.numero);
   if(fc) ctes=ctes.filter(c=>c.clientId==fc);
   if(fs) ctes=ctes.filter(c=>c.status===fs);
+  if(q) ctes=ctes.filter(d=>(d.nfeNumeros&&d.nfeNumeros.some(n=>String(n).toLowerCase().includes(q)))||String(d.numero).includes(q));
+  if(dDe) ctes=ctes.filter(d=>{const k=dataOnlyKey(d.dataEmissao); return k && k>=dDe;});
+  if(dAte) ctes=ctes.filter(d=>{const k=dataOnlyKey(d.dataEmissao); return k && k<=dAte;});
   const tbody=document.getElementById('dash-tbody');
-  if(!ctes.length){tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhum CTe importado ainda — use a aba "Importar XML"</td></tr>';return;}
+  if(!ctes.length){
+    tbody.innerHTML = store.ctes.length
+      ? '<tr class="empty-row"><td colspan="7">Nenhum CTe encontrado para os filtros aplicados</td></tr>'
+      : '<tr class="empty-row"><td colspan="7">Nenhum CTe importado ainda — use a aba "Importar XML"</td></tr>';
+    return;
+  }
   tbody.innerHTML=ctes.slice(0,60).map(d=>{
     const cl=store.clients.find(c=>c.id===d.clientId);
     return `<tr><td><span class="mono">#${d.numero}</span></td><td style="font-size:12px;color:var(--text2);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.tomadorNome||'—'}</td><td>${d.destino}</td><td style="color:var(--text2);font-size:12px">${fmtDate(d.dataEmissao)}</td><td>${fmtVal(d.valor)}</td><td>${badge(d.status)}</td><td><button class="btn-sm" onclick="openDetail('${d.chave}')">Ver</button></td></tr>`;
   }).join('');
+}
+
+function limparFiltrosDash() {
+  ['dash-busca','dash-data-de','dash-data-ate'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  const fc=document.getElementById('dash-fc'); if(fc) fc.value='';
+  const fs=document.getElementById('dash-fs'); if(fs) fs.value='';
+  renderDash();
 }
 function renderClients() {
   const tbody=document.getElementById('clients-tbody');
