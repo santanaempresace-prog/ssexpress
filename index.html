@@ -1968,7 +1968,11 @@ function openDetail(chave) {
           + '</div>';
       }).join('')
     : '<div style="font-size:13px;color:var(--text2);">NF-e não identificada no XML. Número de volumes: ' + (d.volumes||'—') + '</div>';
+  // Remove qualquer seção de NF-e injetada em uma abertura anterior do modal
+  // (evita duplicar a seção "Nota(s) Fiscal(is) vinculada(s)" a cada abertura)
+  document.querySelectorAll('.nfe-linked-section').forEach(function(el){ el.remove(); });
   const nfeSec = document.createElement('div');
+  nfeSec.className = 'nfe-linked-section';
   nfeSec.style.marginTop = '4px';
   nfeSec.innerHTML = '<div class="section-sep">Nota(s) Fiscal(is) vinculada(s)</div>' + nfeHtml;
   document.getElementById('modal-grid').insertAdjacentElement('afterend', nfeSec);
