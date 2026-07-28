@@ -2800,7 +2800,7 @@ function renderDriverList() {
       + '<div class="cte-card-order'+(done?' done':'')+'">'+orderNum+'</div>'
       + '<div>'
       + '<span class="cte-card-num">#'+cte.numero+'</span>'
-      + (nfLabel!=='—' ? '<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:1px;">'+nfLabel+'</div>' : '')
+      + (nfLabel!=='—' ? '<div style="font-size:17px;color:var(--accent);font-weight:700;margin-top:2px;">'+nfLabel+'</div>' : '')
       + '</div></div>'
       + '<span class="cte-card-status">'+cte.status+'</span>';
     card.appendChild(topRow);
@@ -2836,7 +2836,7 @@ function renderDriverList() {
       slotBox.style.cssText = 'flex:1;min-width:120px;';
       if (slots > 1) {
         var slotLabel = document.createElement('div');
-        slotLabel.style.cssText = 'font-size:11px;color:var(--text2);margin-bottom:3px;';
+        slotLabel.style.cssText = 'font-size:14px;font-weight:600;color:var(--text2);margin-bottom:3px;';
         var nfeNum = (cte.nfeNumeros && cte.nfeNumeros[s]) ? ('NF-e #'+cte.nfeNumeros[s]) : ('Canhoto '+(s+1)+'/'+slots);
         slotLabel.textContent = nfeNum;
         slotBox.appendChild(slotLabel);
