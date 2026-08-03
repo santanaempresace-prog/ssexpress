@@ -650,6 +650,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
             <select id="route-driver-sel" onchange="renderRouteOrder()" style="padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;">
               <option value="">Selecione o motorista...</option>
             </select>
+            <button class="btn-outline" onclick="exportarRotaSpoke()" style="padding:7px 14px;font-size:13px;">📤 Exportar CSV pro Spoke</button>
           </div>
         </div>
         <div style="padding:16px;">
@@ -3481,6 +3482,54 @@ function openFullRoute() {
 // ROUTING — ADMIN SIDE
 // ═══════════════════════════════════════════════════════
 var dragSrcIdx = null;
+
+// Gera um CSV com as entregas do motorista selecionado, no formato que o Spoke
+// (antigo Circuit Route Planner) reconhece automaticamente ao importar uma planilha.
+// O Spoke mapeia colunas por nome, então usamos os nomes que ele já entende de cara
+// (Address Line 1, Recipient Name, Notes) — não precisa configurar nada na hora de importar.
+function csvEscape(v) {
+  v = (v==null?'':String(v));
+  if (v.indexOf(',')>-1 || v.indexOf('"')>-1 || v.indexOf('\n')>-1) {
+    return '"' + v.replace(/"/g,'""') + '"';
+  }
+  return v;
+}
+
+function exportarRotaSpoke() {
+  var driverId = parseInt((document.getElementById('route-driver-sel')||{}).value||'0');
+  if (!driverId) { alert('Selecione um motorista primeiro.'); return; }
+  var driver = store.users.find(function(u){ return u.driverId===driverId; });
+  var assignable = ['Manifestado','Coletado','Em trânsito','Saiu para entrega','No depot','Tentativa de entrega'];
+  var ctes = store.ctes.filter(function(c){ return c.driverId===driverId && assignable.includes(c.status); })
+    .sort(function(a,b){ return (a.routeOrder!=null?a.routeOrder:999)-(b.routeOrder!=null?b.routeOrder:999); });
+
+  if (!ctes.length) { alert('Nenhuma entrega pendente para exportar.'); return; }
+
+  var semEndereco = ctes.filter(function(c){ var a=buildDestAddress(c); return !a || a===c.destino; }).length;
+
+  var header = ['Address Line 1','Recipient Name','Notes'];
+  var rows = ctes.map(function(c){
+    var addr = buildDestAddress(c);
+    var notasPartes = ['CT-e #'+c.numero];
+    if (c.nfeNumeros && c.nfeNumeros.length) notasPartes.push('NF-e '+c.nfeNumeros.join(', '));
+    if (c.observacao) notasPartes.push(c.observacao);
+    return [addr, c.destNome||'', notasPartes.join(' — ')];
+  });
+
+  var csv = [header].concat(rows).map(function(r){ return r.map(csvEscape).join(','); }).join('\r\n');
+  var blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}); // BOM ajuda o Excel a ler acentos certinho
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var dataStr = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  a.href = url;
+  a.download = 'rota-'+(driver?driver.name.replace(/\s+/g,'-'):'motorista')+'-'+dataStr+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  if (semEndereco) {
+    alert('Exportado! ⚠ '+semEndereco+' entrega(s) estão sem endereço completo cadastrado — o Spoke pode não localizar essas paradas corretamente. Vale completar o endereço antes de importar.');
+  }
+}
 
 function autoSortRoute(driverId) {
   var assignable = ['Manifestado','Coletado','Em trânsito','Saiu para entrega','No depot','Tentativa de entrega'];
