@@ -1516,6 +1516,31 @@ function bootApp() {
 }
 bootApp();
 
+// Apps instalados na tela inicial do celular (PWA) costumam ficar "pausados" em segundo
+// plano quando o motorista troca de app ou bloqueia a tela — e ao reabrir, o Android/iOS
+// muitas vezes só retoma a página congelada da memória, em vez de recarregar. Isso pode
+// deixar o listener em tempo real do Firestore desatualizado. Pra garantir que os dados
+// fiquem sempre certos, buscamos a versão mais recente da nuvem toda vez que o app volta
+// a ficar visível (troca de app, desbloqueio de tela, etc).
+function refreshFromCloudNow() {
+  if (!cloudReady) return;
+  CLOUD_DOC().get().then(function(doc) {
+    if (!doc.exists) return;
+    const incoming = doc.data();
+    if (isStoreEmpty(incoming) && !isStoreEmpty(store)) return; // proteção contra doc vazio
+    store = incoming;
+    localStorage.setItem(KEY, JSON.stringify(store));
+    refreshCurrentView();
+  }).catch(function(e) { console.error('Erro ao atualizar dados ao voltar pro app:', e); });
+}
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') refreshFromCloudNow();
+});
+window.addEventListener('pageshow', function(e) {
+  if (e.persisted) refreshFromCloudNow(); // página restaurada do bfcache (congelada)
+});
+window.addEventListener('focus', refreshFromCloudNow);
+
 // Acesso direto do motorista: link/atalho próprio abre já na tela de login dele
 if (new URLSearchParams(window.location.search).has('motorista')) {
   showDriverLogin();
