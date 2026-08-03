@@ -335,6 +335,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
   <div style="color:#a09896;font-family:'DM Sans',sans-serif;font-size:13px;" id="boot-loading-text">Carregando dados...</div>
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+<div id="cloud-sync-banner" style="display:none;position:fixed;bottom:16px;left:16px;right:16px;max-width:480px;margin:0 auto;background:var(--red,#cc0000);color:#fff;padding:12px 16px;border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;z-index:99999;box-shadow:0 6px 18px rgba(0,0,0,.35);line-height:1.4;"></div>
 
 <!-- LOGIN -->
 <div id="page-login" class="page active">
@@ -1151,9 +1152,28 @@ function pushToCloud() {
       return copy;
     })
   });
-  CLOUD_DOC().set(sanitized).catch(function(e){
+  CLOUD_DOC().set(sanitized).then(function(){
+    hideCloudSyncError();
+  }).catch(function(e){
     console.error('Erro ao salvar na nuvem:', e);
+    var payloadSize = 0;
+    try { payloadSize = new Blob([JSON.stringify(sanitized)]).size; } catch(err) {}
+    var sizeHint = payloadSize > 900000
+      ? ' O sistema acumulou muitos dados (histórico de eventos/observações) e está perto do limite de 1MB por documento do Firestore — provavelmente é esse o motivo. Vale limpar/arquivar entregas antigas.'
+      : '';
+    showCloudSyncError('⚠ Uma alteração não foi salva na nuvem (' + (e.message||'erro desconhecido') + ').' + sizeHint + ' Os outros dispositivos (ex: app do motorista) podem não receber essa atualização até isso ser resolvido.');
   });
+}
+
+function showCloudSyncError(msg) {
+  var b = document.getElementById('cloud-sync-banner');
+  if (!b) return;
+  b.textContent = msg;
+  b.style.display = 'block';
+}
+function hideCloudSyncError() {
+  var b = document.getElementById('cloud-sync-banner');
+  if (b) b.style.display = 'none';
 }
 
 function saveXmlToCloud(chave, xmlStr) {
