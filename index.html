@@ -651,6 +651,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
               <option value="">Selecione o motorista...</option>
             </select>
             <button class="btn-outline" onclick="exportarRotaSpoke()" style="padding:7px 14px;font-size:13px;">📤 Exportar CSV pro Spoke</button>
+            <button class="btn-outline" onclick="exportarManifestoPdfSpoke()" style="padding:7px 14px;font-size:13px;">🖨️ Gerar PDF do manifesto (Spoke)</button>
           </div>
         </div>
         <div style="padding:16px;">
@@ -767,7 +768,18 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
             <div class="table-header"><span class="table-title">🧹 Manutenção de espaço (comprovantes)</span></div>
             <div style="padding:18px;">
               <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6;">As fotos de comprovante de entrega ocupam a maior parte do espaço no plano gratuito. Use este botão (ex: no fim de cada mês) para baixar todas em um arquivo .zip e liberar espaço na nuvem — os dados da entrega (status, datas, histórico) continuam salvos normalmente, só a foto em si é removida da nuvem.</p>
-              <button class="btn-outline" onclick="limparComprovantesAntigos()" style="width:100%;">📦 Baixar todos os comprovantes (.zip) e liberar espaço</button>
+              <div style="display:flex;gap:10px;margin-bottom:12px;">
+                <div style="flex:1;">
+                  <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">De (opcional)</label>
+                  <input type="date" id="cleanup-data-de" style="width:100%;box-sizing:border-box;padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Até (opcional)</label>
+                  <input type="date" id="cleanup-data-ate" style="width:100%;box-sizing:border-box;padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+                </div>
+              </div>
+              <p style="font-size:11px;color:var(--text2);margin-bottom:10px;">Deixe os dois em branco pra baixar e liberar todos os comprovantes, de qualquer data.</p>
+              <button class="btn-outline" onclick="limparComprovantesAntigos()" style="width:100%;">📦 Baixar comprovantes (.zip) e liberar espaço</button>
               <div id="photo-cleanup-status" style="font-size:12px;color:var(--green);margin-top:10px;min-height:18px;"></div>
             </div>
           </div>
@@ -1205,7 +1217,13 @@ function fetchPhotosFromCloud(chave) {
 function limparComprovantesAntigos() {
   if (!cloudReady) { alert('Sem conexão com a nuvem — não é possível fazer isso agora.'); return; }
   if (typeof JSZip === 'undefined') { alert('Não foi possível carregar o gerador de ZIP. Verifique sua conexão e tente novamente.'); return; }
-  if (!confirm('Isso vai baixar todos os comprovantes de entrega em um arquivo .zip e, em seguida, apagá-los da nuvem para liberar espaço.\n\nAs entregas continuam registradas normalmente (status, datas, histórico) — só a foto em si será removida.\n\nDeseja continuar?')) return;
+
+  const dDe = (document.getElementById('cleanup-data-de')||{}).value || '';
+  const dAte = (document.getElementById('cleanup-data-ate')||{}).value || '';
+  const periodoMsg = (dDe||dAte)
+    ? '\n\nPeríodo selecionado: '+(dDe||'início')+' até '+(dAte||'hoje')+'.'
+    : '\n\nNenhum período selecionado — isso vai afetar comprovantes de TODAS as datas.';
+  if (!confirm('Isso vai baixar os comprovantes de entrega em um arquivo .zip e, em seguida, apagá-los da nuvem para liberar espaço.\n\nAs entregas continuam registradas normalmente (status, datas, histórico) — só a foto em si será removida.'+periodoMsg+'\n\nDeseja continuar?')) return;
 
   const statusEl = document.getElementById('photo-cleanup-status');
   statusEl.style.color = 'var(--text2)';
@@ -1225,10 +1243,13 @@ function limparComprovantesAntigos() {
     snapshot.forEach(function(doc) {
       const chave = doc.id;
       const data = doc.data();
+      const dataStr = (data.savedAt || '').substring(0,10) || 'sem-data';
+      // Filtra pelo período escolhido (se algum limite foi definido)
+      if (dDe && dataStr < dDe) return;
+      if (dAte && dataStr > dAte) return;
       const photosArr = data.photos || (data.photo ? [data.photo] : []);
       const cte = store.ctes.find(function(c){ return c.chave === chave; });
       const numero = cte ? cte.numero : chave.slice(-6);
-      const dataStr = (data.savedAt || '').substring(0,10) || 'sem-data';
       let addedAny = false;
       photosArr.forEach(function(photoDataUrl, i){
         const base64 = (photoDataUrl || '').split(',')[1];
@@ -1244,7 +1265,7 @@ function limparComprovantesAntigos() {
 
     if (count === 0) {
       statusEl.style.color = 'var(--text2)';
-      statusEl.textContent = 'Nenhum comprovante válido encontrado.';
+      statusEl.textContent = 'Nenhum comprovante encontrado para o período selecionado.';
       return;
     }
 
@@ -3487,6 +3508,74 @@ var dragSrcIdx = null;
 // (antigo Circuit Route Planner) reconhece automaticamente ao importar uma planilha.
 // O Spoke mapeia colunas por nome, então usamos os nomes que ele já entende de cara
 // (Address Line 1, Recipient Name, Notes) — não precisa configurar nada na hora de importar.
+// Gera um PDF de "manifesto de rota" com uma parada por bloco (endereço, destinatário,
+// referência do CT-e/NF-e bem separados) — formato pensado pra função "Importar manifesto
+// de rotas" do app Spoke, que lê o PDF via OCR e extrai as paradas automaticamente.
+function exportarManifestoPdfSpoke() {
+  var driverId = parseInt((document.getElementById('route-driver-sel')||{}).value||'0');
+  if (!driverId) { alert('Selecione um motorista primeiro.'); return; }
+  if (!window.jspdf) { alert('Não foi possível carregar o gerador de PDF. Verifique sua conexão e tente novamente.'); return; }
+  var driver = store.users.find(function(u){ return u.driverId===driverId; });
+  var assignable = ['Manifestado','Coletado','Em trânsito','Saiu para entrega','No depot','Tentativa de entrega'];
+  var ctes = store.ctes.filter(function(c){ return c.driverId===driverId && assignable.includes(c.status); })
+    .sort(function(a,b){ return (a.routeOrder!=null?a.routeOrder:999)-(b.routeOrder!=null?b.routeOrder:999); });
+
+  if (!ctes.length) { alert('Nenhuma entrega pendente para gerar o manifesto.'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  const addrIndent = 26;
+  let y = 24;
+
+  function drawHeader() {
+    doc.setFillColor(204,0,0);
+    doc.rect(0,0,pageW,16,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text('SS Express — Manifesto de Rota', marginX, 10.5);
+    doc.setTextColor(0,0,0);
+  }
+  drawHeader();
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+  doc.text('Motorista: ' + (driver?driver.name:'—') + '   |   Data: ' + new Date().toLocaleDateString('pt-BR') + '   |   ' + ctes.length + ' parada(s)', marginX, y);
+  doc.setTextColor(0,0,0);
+  y += 10;
+
+  ctes.forEach(function(c, i){
+    var addr = buildDestAddress(c) || '—';
+    var addrLines = doc.splitTextToSize(addr, pageW - marginX - addrIndent);
+    var refParts = ['CT-e #'+c.numero];
+    if (c.nfeNumeros && c.nfeNumeros.length) refParts.push('NF-e ' + c.nfeNumeros.join(', '));
+    var blockH = 7 + Math.max(addrLines.length,1)*5 + 7 + 7 + 8;
+
+    if (y + blockH > pageH - 14) { doc.addPage(); drawHeader(); y = 24; }
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.text('Parada ' + (i+1), marginX, y);
+    y += 7;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('Endereço:', marginX, y);
+    doc.text(addrLines, marginX + addrIndent, y);
+    y += addrLines.length * 5;
+    y += 2;
+    doc.text('Destinatário: ' + (c.destNome || '—'), marginX, y);
+    y += 7;
+    doc.setTextColor(120,120,120);
+    doc.text('Referência: ' + refParts.join(' — '), marginX, y);
+    doc.setTextColor(0,0,0);
+    y += 8;
+    doc.setDrawColor(220,220,220);
+    doc.line(marginX, y, pageW - marginX, y);
+    y += 8;
+  });
+
+  var dataStr = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  doc.save('manifesto-rota-' + (driver?driver.name.replace(/\s+/g,'-'):'motorista') + '-' + dataStr + '.pdf');
+}
+
 function csvEscape(v) {
   v = (v==null?'':String(v));
   if (v.indexOf(',')>-1 || v.indexOf('"')>-1 || v.indexOf('\n')>-1) {
