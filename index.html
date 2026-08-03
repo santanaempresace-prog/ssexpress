@@ -1081,6 +1081,8 @@ try {
   cloudReady = true;
 } catch(e) {
   console.warn('Firebase não configurado ainda — usando apenas dados locais.', e);
+  var bootTextEl = document.getElementById('boot-loading-text');
+  if (bootTextEl) bootTextEl.textContent = 'Não foi possível conectar à nuvem (conexão instável?). Usando dados salvos neste dispositivo.';
 }
 const CLOUD_DOC = () => db.collection('cargotrack').doc('store');
 let suppressNextSnapshot = false; // evita reagir ao nosso próprio save()
@@ -1469,7 +1471,7 @@ function bootApp() {
   const loadingText = document.getElementById('boot-loading-text');
   function finishBoot() { if (loadingEl) loadingEl.style.display = 'none'; }
 
-  if (!cloudReady) { finishBoot(); return; }
+  if (!cloudReady) { setTimeout(finishBoot, 1200); return; }
 
   const localStoreAtBoot = store; // dados deste dispositivo, salvos ANTES de qualquer contato com a nuvem
 
