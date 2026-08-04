@@ -3564,8 +3564,9 @@ function exportarManifestoPdfSpoke() {
   ctes.forEach(function(c, i){
     var addr = buildDestAddress(c) || '—';
     var addrLines = doc.splitTextToSize(addr, pageW - marginX - addrIndent);
-    var refParts = ['CT-e #'+c.numero];
+    var refParts = [];
     if (c.nfeNumeros && c.nfeNumeros.length) refParts.push('NF-e ' + c.nfeNumeros.join(', '));
+    refParts.push('CT-e #'+c.numero);
     var blockH = 7 + Math.max(addrLines.length,1)*5 + 7 + 7 + 8;
 
     if (y + blockH > pageH - 14) { doc.addPage(); drawHeader(); y = 24; }
@@ -3616,8 +3617,9 @@ function exportarRotaSpoke() {
   var header = ['Address Line 1','Recipient Name','Notes'];
   var rows = ctes.map(function(c){
     var addr = buildDestAddress(c);
-    var notasPartes = ['CT-e #'+c.numero];
+    var notasPartes = [];
     if (c.nfeNumeros && c.nfeNumeros.length) notasPartes.push('NF-e '+c.nfeNumeros.join(', '));
+    notasPartes.push('CT-e #'+c.numero);
     if (c.observacao) notasPartes.push(c.observacao);
     return [addr, c.destNome||'', notasPartes.join(' — ')];
   });
