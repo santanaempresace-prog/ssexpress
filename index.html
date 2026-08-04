@@ -635,7 +635,12 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
                 <option value="">Todos os clientes</option>
               </select>
             </div>
+            <div class="form-field">
+              <label>Data/hora de saída para entrega</label>
+              <input type="datetime-local" id="assign-data-saida" style="width:100%;padding:9px 12px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+            </div>
           </div>
+          <p style="font-size:11px;color:var(--text2);margin-top:-6px;margin-bottom:10px;">Deixe em branco pra usar o momento atual automaticamente.</p>
           <p style="font-size:12px;color:var(--text2);margin-bottom:10px;">Selecione os CTes com status <strong style="color:var(--text)">Manifestado, Coletado ou Em trânsito</strong> para atribuir ao motorista:</p>
           <div id="assign-cte-list" style="max-height:260px;overflow-y:auto;"></div>
           <button class="btn-blue" onclick="assignCtes()" style="margin-top:12px;width:100%;">Atribuir CTes selecionados</button>
@@ -2085,6 +2090,7 @@ function openDetail(chave) {
   document.getElementById('modal-grid').innerHTML=`
     <div class="detail-item"><div class="di-label">Data emissão</div><div class="di-val">${fmtDate(d.dataEmissao)}</div></div>
     <div class="detail-item"><div class="di-label">Situação</div><div class="di-val">${badge(d.status)}</div></div>
+    ${d.dataSaida ? `<div class="detail-item"><div class="di-label">Saída para entrega</div><div class="di-val">${fmtDateTime(d.dataSaida)}</div></div>` : ''}
     <div class="detail-item"><div class="di-label">Origem</div><div class="di-val">${d.origem}</div></div>
     <div class="detail-item"><div class="di-label">Destino</div><div class="di-val">${d.destino}</div></div>
     <div class="detail-item"><div class="di-label">Remetente</div><div class="di-val">${d.remNome||'—'}</div></div>
@@ -2966,6 +2972,13 @@ function renderDriverList() {
     sub.appendChild(addrTag);
     card.appendChild(sub);
 
+    if (cte.dataSaida) {
+      var saidaEl = document.createElement('div');
+      saidaEl.style.cssText = 'font-size:11px;color:var(--text2);margin-top:-8px;margin-bottom:10px;';
+      saidaEl.textContent = '🚚 Saída: ' + fmtDateTime(cte.dataSaida);
+      card.appendChild(saidaEl);
+    }
+
     // Photo slots — uma foto por nota fiscal vinculada a este CTe (normalmente 1, mas pode ser mais)
     var slots = getRequiredPhotoSlots(cte);
     var photosArr = getDriverPhotosArr(cte);
@@ -3330,6 +3343,8 @@ function assignCtes() {
   var checked = document.querySelectorAll('#assign-cte-list input[type=checkbox]:checked');
   if (!checked.length) { alert('Selecione pelo menos um CTe.'); return; }
   var driver = store.users.find(function(u){ return u.driverId===driverId; });
+  var dataSaidaInput = (document.getElementById('assign-data-saida')||{}).value;
+  var dataSaida = dataSaidaInput ? new Date(dataSaidaInput).toISOString() : new Date().toISOString();
   // Get current max order for this driver
   var maxOrder = store.ctes.filter(function(c){ return c.driverId===driverId && c.routeOrder!=null; })
     .reduce(function(m,c){ return Math.max(m, c.routeOrder); }, -1);
@@ -3341,11 +3356,13 @@ function assignCtes() {
       cte.driverName = driver ? driver.name : '';
       cte.status = 'Saiu para entrega';
       cte.routeOrder = nextOrder++;
+      cte.dataSaida = dataSaida;
     }
   });
   save();
   renderDriversTab();
   renderRouteOrder();
+  var d = document.getElementById('assign-data-saida'); if (d) d.value = '';
   alert('✓ '+checked.length+' CTe(s) atribuído(s) ao motorista '+( driver?driver.name:''));
 }
 
