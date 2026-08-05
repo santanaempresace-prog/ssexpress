@@ -2057,10 +2057,16 @@ function parseCteXml(xmlStr, fname) {
     if (!numero) return {ok:false,msg:'Número do CTe não encontrado no XML'};
     if (store.ctes.find(c=>c.chave===chave||(c.numero===numero&&c.serie===serie))) return {ok:false,msg:`CTe #${numero} já importado`};
     const client = store.clients.find(c=>cc(c.cnpj)===tomadorCnpj);
-    const cte = { chave:chave||`gen-${numero}-${Date.now()}`, numero, serie, dataEmissao, valor, peso, volumes:String(volumes), origem, destino, remNome, destNome, tomadorCnpj, tomadorNome, destCnpj, destCep, destEndereco:destEndFormatado, status:'Manifestado', clientId:client?client.id:null, eventos:[], xmlFile:fname, nfeChaves:nfeChaves, nfeNumeros:nfeNumeros };
+    // CT-es antigos (emitidos há mais de 7 dias) já entram como "Entregue" — evita ter que
+    // atualizar manualmente o status de um lote de importação retroativa/histórica.
+    const diasDesdeEmissao = dataEmissao ? (Date.now() - new Date(dataEmissao).getTime()) / 86400000 : 0;
+    const isAntigo = diasDesdeEmissao > 7;
+    const statusInicial = isAntigo ? 'Entregue' : 'Manifestado';
+    const cte = { chave:chave||`gen-${numero}-${Date.now()}`, numero, serie, dataEmissao, valor, peso, volumes:String(volumes), origem, destino, remNome, destNome, tomadorCnpj, tomadorNome, destCnpj, destCep, destEndereco:destEndFormatado, status:statusInicial, clientId:client?client.id:null, eventos:[], xmlFile:fname, nfeChaves:nfeChaves, nfeNumeros:nfeNumeros };
+    if (isAntigo) cte.entregueEm = dataEmissao;
     store.ctes.push(cte); save();
     saveXmlToCloud(cte.chave, xmlStr);
-    return {ok:true, msg:`CTe #${numero} importado${client?' → '+client.name:' (sem cliente — vincule na aba CTes)'}`, needsLink:!client, chave:cte.chave, numero};
+    return {ok:true, msg:`CTe #${numero} importado${isAntigo?' → marcado como Entregue (retroativo)':''}${client?' → '+client.name:' (sem cliente — vincule na aba CTes)'}`, needsLink:!client, chave:cte.chave, numero};
   } catch(e) { return {ok:false,msg:'Erro: '+e.message}; }
 }
 
@@ -2131,15 +2137,41 @@ function handleFiles(files, tipo) {
           const progEl = document.getElementById('zip-progress-'+file.name.replace(/\W/g,'_'));
           if (progEl) progEl.textContent = `${xmlFiles.length} XML(s) encontrado(s) — processando...`;
           let ok=0, err=0;
+          const chavesImportadas = [];
           for (const xmlPath of xmlFiles) {
             const content = await zip.files[xmlPath].async('string');
             const fname = xmlPath.split('/').pop();
             const res = tipo==='cte' ? parseCteXml(content, fname) : parseEventoXml(content, fname);
             addLogRow(logEl, res.ok, fname, res.msg, res.ok && res.needsLink ? res.chave : null);
-            res.ok ? ok++ : err++;
+            if (res.ok) { ok++; if (tipo==='cte' && res.chave) chavesImportadas.push(res.chave); } else { err++; }
           }
           if (progEl) progEl.textContent = `ZIP processado: ${ok} importado(s)${err?' — '+err+' erro(s)':''}`;
           renderAdminStats(); renderDash(); renderAdminCtes();
+
+          // Mostra quantos CT-es caíram em cada mês, pra confirmar que datas antigas
+          // (de CT-es retroativos) foram reconhecidas certinho pelo dhEmi do XML.
+          if (tipo==='cte' && chavesImportadas.length) {
+            const porMes = {};
+            chavesImportadas.forEach(function(ch){
+              const cte = store.ctes.find(function(c){ return c.chave===ch; });
+              if (!cte) return;
+              const k = dataOnlyKey(cte.dataEmissao).slice(0,7);
+              if (!k) return;
+              porMes[k] = (porMes[k]||0) + 1;
+            });
+            const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+            const resumo = Object.keys(porMes).sort().map(function(k){
+              const partes = k.split('-'); const label = nomesMes[parseInt(partes[1])-1]+'/'+partes[0];
+              return label+': '+porMes[k];
+            }).join('  •  ');
+            if (resumo) {
+              const summaryRow = document.createElement('div');
+              summaryRow.className = 'log-row';
+              summaryRow.style.cssText = 'background:var(--blue-bg);color:var(--accent);font-size:12px;';
+              summaryRow.innerHTML = '<div class="log-icon" style="background:transparent;">📅</div><span class="log-msg">Distribuição por mês: '+resumo+'</span>';
+              logEl.prepend(summaryRow);
+            }
+          }
         } catch(ex) {
           addLogRow(logEl, false, file.name, 'Erro ao descompactar ZIP: '+ex.message, null);
         }
