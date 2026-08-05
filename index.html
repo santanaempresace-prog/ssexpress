@@ -441,6 +441,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
       <button class="nav-tab" onclick="adminTab('clientes',this)">Clientes</button>
       <button class="nav-tab" onclick="adminTab('ctes',this)">CTes</button>
       <button class="nav-tab" onclick="adminTab('status',this)">Status</button>
+      <button class="nav-tab" onclick="adminTab('financeiro',this)">💰 Financeiro</button>
       <button class="nav-tab" onclick="adminTab('motoristas',this)">Motoristas</button>
       <button class="nav-tab" onclick="adminTab('conta',this)">⚙ Conta</button>
     </div>
@@ -574,6 +575,27 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
           <div id="quick-btns" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
         </div>
       </div>
+    </div>
+
+    <!-- FINANCEIRO TAB -->
+    <div class="tab-content" id="tab-financeiro">
+      <div class="page-header"><div><h2>💰 Financeiro</h2><p>Acompanhamento de faturamento mês a mês</p></div></div>
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-title">Resumo mensal</span>
+          <div class="search-row">
+            <select id="fin-fc" onchange="renderFinanceiro()"><option value="">Todos os clientes</option></select>
+            <select id="fin-ano" onchange="renderFinanceiro()"><option value="">Todos os anos</option></select>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Mês</th><th>Nº CT-es</th><th>Valor faturado</th><th>Entregues</th><th>Valor entregue</th><th>Em aberto</th><th>Valor em aberto</th></tr></thead>
+          <tbody id="fin-tbody"></tbody>
+        </table>
+        </div>
+      </div>
+      <div id="fin-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:20px;"></div>
     </div>
 
     <!-- MOTORISTAS TAB -->
@@ -1742,6 +1764,7 @@ function adminTab(name, btn) {
   if (name==='clientes') renderClients();
   if (name==='ctes') { renderAdminCtes(); populateStatusSelects(); }
   if (name==='status') renderStatusManager();
+  if (name==='financeiro') renderFinanceiro();
   if (name==='motoristas') renderDriversTab();
   if (name==='conta') { loadAdminProfile(); document.getElementById('pw-alert').className='alert-box'; document.getElementById('reset-alert').className='alert-box'; document.getElementById('profile-alert').className='alert-box'; }
 }
@@ -1897,9 +1920,62 @@ function renderAdminCtes() {
 }
 
 
+function renderFinanceiro() {
+  const fc = (document.getElementById('fin-fc')||{}).value || '';
+  const ano = (document.getElementById('fin-ano')||{}).value || '';
+  let ctes = [...store.ctes];
+  if (fc) ctes = ctes.filter(c=>c.clientId==fc);
+  if (ano) ctes = ctes.filter(c=> dataOnlyKey(c.dataEmissao).slice(0,4) === ano);
+
+  const groups = {};
+  ctes.forEach(function(c){
+    const k = dataOnlyKey(c.dataEmissao).slice(0,7); // YYYY-MM
+    if (!k) return;
+    if (!groups[k]) groups[k] = {count:0, valor:0, entregues:0, valorEntregue:0, aberto:0, valorAberto:0};
+    const v = parseFloat(c.valor||0);
+    groups[k].count++;
+    groups[k].valor += v;
+    if (c.status === 'Entregue') { groups[k].entregues++; groups[k].valorEntregue += v; }
+    else if (c.status !== 'Cancelado') { groups[k].aberto++; groups[k].valorAberto += v; }
+  });
+
+  const meses = Object.keys(groups).sort().reverse();
+  const tbody = document.getElementById('fin-tbody');
+  const cardsEl = document.getElementById('fin-cards');
+
+  if (!meses.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum dado encontrado para os filtros aplicados</td></tr>';
+    cardsEl.innerHTML = '';
+    return;
+  }
+
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  tbody.innerHTML = meses.map(function(k){
+    const g = groups[k];
+    const partes = k.split('-'), y = partes[0], m = partes[1];
+    const label = nomesMes[parseInt(m)-1] + '/' + y;
+    return '<tr><td><b>'+label+'</b></td><td>'+g.count+'</td><td>'+fmtVal(g.valor)+'</td>'
+      + '<td style="color:var(--green)">'+g.entregues+'</td><td style="color:var(--green)">'+fmtVal(g.valorEntregue)+'</td>'
+      + '<td style="color:var(--amber)">'+g.aberto+'</td><td style="color:var(--amber)">'+fmtVal(g.valorAberto)+'</td></tr>';
+  }).join('');
+
+  const totalValor = ctes.reduce(function(s,c){return s+parseFloat(c.valor||0);}, 0);
+  const totalEntregue = ctes.filter(function(c){return c.status==='Entregue';}).reduce(function(s,c){return s+parseFloat(c.valor||0);}, 0);
+  const totalAberto = ctes.filter(function(c){return c.status!=='Entregue' && c.status!=='Cancelado';}).reduce(function(s,c){return s+parseFloat(c.valor||0);}, 0);
+  const mediaCte = ctes.length ? totalValor/ctes.length : 0;
+  cardsEl.innerHTML = ''
+    + '<div class="stat-card"><div class="slabel">Total no período</div><div class="sval blue">'+fmtVal(totalValor)+'</div></div>'
+    + '<div class="stat-card"><div class="slabel">Já entregue</div><div class="sval green">'+fmtVal(totalEntregue)+'</div></div>'
+    + '<div class="stat-card"><div class="slabel">Em aberto</div><div class="sval amber">'+fmtVal(totalAberto)+'</div></div>'
+    + '<div class="stat-card"><div class="slabel">Média por CT-e</div><div class="sval" style="font-size:16px">'+fmtVal(mediaCte)+'</div></div>';
+}
+
 function populateSelects() {
   const opts=store.clients.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join('');
-  ['dash-fc','admin-fc'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">Todos os clientes</option>'+opts;});
+  ['dash-fc','admin-fc','fin-fc'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">Todos os clientes</option>'+opts;});
+  const anos = [...new Set(store.ctes.map(c=>dataOnlyKey(c.dataEmissao).slice(0,4)).filter(Boolean))].sort().reverse();
+  const finAnoEl = document.getElementById('fin-ano');
+  if (finAnoEl) finAnoEl.innerHTML = '<option value="">Todos os anos</option>' + anos.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
   populateStatusSelects();
 }
 
