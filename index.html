@@ -1223,9 +1223,20 @@ function saveXmlToCloud(chave, xmlStr) {
 }
 
 function savePhotosToCloud(chave, photosArr) {
-  if (!cloudReady || !chave || !photosArr || !photosArr.length) return;
+  if (!chave || !photosArr || !photosArr.length) return;
+  if (!cloudReady) {
+    showCloudSyncError('⚠ Sem conexão com a nuvem no momento — a foto ficou salva só neste aparelho. Assim que a conexão voltar, abra o app de novo pra tentar reenviar.');
+    return;
+  }
   db.collection('cargotrack_photos').doc(chave).set({ photos: photosArr, savedAt: new Date().toISOString() })
-    .catch(function(e){ console.error('Erro ao salvar foto(s) na nuvem (pode ser grande demais):', e); });
+    .then(function(){ hideCloudSyncError(); })
+    .catch(function(e){
+      console.error('Erro ao salvar foto(s) na nuvem (pode ser grande demais):', e);
+      var totalSize = 0;
+      try { photosArr.forEach(function(p){ totalSize += (p||'').length; }); } catch(err) {}
+      var sizeHint = totalSize > 900000 ? ' A foto pode estar grande demais.' : '';
+      showCloudSyncError('⚠ A foto de comprovante não foi salva na nuvem (' + (e.message||'erro desconhecido') + ').' + sizeHint + ' O admin não vai ver essa foto até isso ser resolvido — tente tirar a foto de novo com uma conexão melhor.');
+    });
 }
 
 function fetchPhotosFromCloud(chave) {
