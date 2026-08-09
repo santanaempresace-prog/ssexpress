@@ -1177,29 +1177,64 @@ function save() {
   pushToCloud();
 }
 
+let pendingEventos = {}; // { chave: [eventObj, ...] } — eventos novos ainda não confirmados na nuvem
+function markEventoPending(chave, eventObj) {
+  if (!chave || !eventObj) return;
+  (pendingEventos[chave] = pendingEventos[chave] || []).push(eventObj);
+}
+
+let eventosMigratedChaves = new Set(); // chaves cujo histórico completo já foi migrado pra coleção separada nesta sessão
+
 function pushToCloud() {
   if (!cloudReady) return;
   suppressNextSnapshot = true;
-  // Nunca envia fotos (base64, pesadas) dentro do documento principal — isso estouraria
-  // o limite de 1MB do Firestore e travaria a sincronização de todo mundo.
+  // Nunca envia fotos (base64, pesadas) nem o histórico de eventos dentro do documento
+  // principal — isso estouraria o limite de 1MB do Firestore e travaria a sincronização
+  // de todo mundo. Fotos e eventos são guardados em coleções separadas por CT-e.
   const sanitized = Object.assign({}, store, {
     ctes: (store.ctes||[]).map(function(c){
-      if (!c.driverPhotos && !c.driverPhoto && !c.obsPhoto) return c;
+      const heavy = c.driverPhotos || c.driverPhoto || c.obsPhoto || (c.eventos && c.eventos.length);
+      if (!heavy) return c;
       const copy = Object.assign({}, c);
       if (copy.driverPhotos) { delete copy.driverPhotos; copy.hasDriverPhoto = true; }
       if (copy.driverPhoto) { delete copy.driverPhoto; copy.hasDriverPhoto = true; }
       if (copy.obsPhoto) { delete copy.obsPhoto; copy.hasObsPhoto = true; }
+      if (copy.eventos && copy.eventos.length) {
+        copy.hasEventos = true;
+        // Na primeira vez que este CT-e é "enxugado", migra o histórico que já estava
+        // embutido no documento principal pra coleção separada, pra nada se perder.
+        if (!eventosMigratedChaves.has(copy.chave)) {
+          copy.eventos.forEach(function(ev){ markEventoPending(copy.chave, ev); });
+          eventosMigratedChaves.add(copy.chave);
+        }
+      }
+      delete copy.eventos;
       return copy;
     })
   });
   CLOUD_DOC().set(sanitized).then(function(){
     hideCloudSyncError();
+    // Agora que o doc principal foi salvo, sincroniza os eventos novos que ainda não
+    // foram confirmados na nuvem — usa arrayUnion, que só ADICIONA ao histórico já salvo
+    // (guardado à parte, não conta pro limite de 1MB do documento principal), sem risco
+    // de sobrescrever/perder eventos antigos que este dispositivo não tenha carregado.
+    var chaves = Object.keys(pendingEventos);
+    if (chaves.length) {
+      var toFlush = pendingEventos;
+      pendingEventos = {};
+      chaves.forEach(function(ch){
+        db.collection('cargotrack_eventos').doc(ch).set(
+          { eventos: firebase.firestore.FieldValue.arrayUnion.apply(null, toFlush[ch]), savedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch(function(e){ console.error('Erro ao salvar histórico de eventos na nuvem:', e); });
+      });
+    }
   }).catch(function(e){
     console.error('Erro ao salvar na nuvem:', e);
     var payloadSize = 0;
     try { payloadSize = new Blob([JSON.stringify(sanitized)]).size; } catch(err) {}
     var sizeHint = payloadSize > 900000
-      ? ' O sistema acumulou muitos dados (histórico de eventos/observações) e está perto do limite de 1MB por documento do Firestore — provavelmente é esse o motivo. Vale limpar/arquivar entregas antigas.'
+      ? ' O sistema acumulou muitos dados e está perto do limite de 1MB por documento do Firestore — provavelmente é esse o motivo. Vale limpar/arquivar entregas antigas.'
       : '';
     showCloudSyncError('⚠ Uma alteração não foi salva na nuvem (' + (e.message||'erro desconhecido') + ').' + sizeHint + ' Os outros dispositivos (ex: app do motorista) podem não receber essa atualização até isso ser resolvido.');
   });
@@ -1220,6 +1255,13 @@ function saveXmlToCloud(chave, xmlStr) {
   if (!cloudReady || !chave || !xmlStr) return;
   db.collection('cargotrack_xmls').doc(chave).set({ xml: xmlStr, savedAt: new Date().toISOString() })
     .catch(function(e){ console.error('Erro ao salvar XML do CTe na nuvem:', e); });
+}
+
+function fetchEventosFromCloud(chave) {
+  if (!cloudReady) return Promise.resolve(null);
+  return db.collection('cargotrack_eventos').doc(chave).get()
+    .then(function(doc){ return doc.exists ? (doc.data().eventos || null) : null; })
+    .catch(function(){ return null; });
 }
 
 function savePhotosToCloud(chave, photosArr) {
@@ -1363,6 +1405,7 @@ function reabrirEntrega(chave) {
   cte.statusUpdatedAt = now;
   cte.eventos = cte.eventos || [];
   cte.eventos.push({ label: 'Entrega reaberta pelo admin (foto incorreta removida, motorista vai tirar novamente)', dhEvento: now, seq: 'manual' });
+  markEventoPending(chave, cte.eventos[cte.eventos.length-1]);
 
   if (cloudReady) {
     db.collection('cargotrack_photos').doc(chave).delete().catch(function(e){ console.error('Erro ao apagar foto na nuvem:', e); });
@@ -2110,6 +2153,7 @@ function parseEventoXml(xmlStr, fname) {
     const label = mapped?mapped.label:(xEvento||`Evento ${tpEvento}`);
     cte.eventos = cte.eventos||[];
     cte.eventos.push({tpEvento, dhEvento, label, seq:nSeq});
+    markEventoPending(cte.chave, cte.eventos[cte.eventos.length-1]);
     if (mapped) cte.status=mapped.status;
     save();
     return {ok:true, msg:`CTe #${cte.numero} → "${label}"${mapped?' → status: '+mapped.status:''}`};
@@ -2243,13 +2287,25 @@ function openDetail(chave) {
   nfeSec.style.marginTop = '4px';
   nfeSec.innerHTML = '<div class="section-sep">Nota(s) Fiscal(is) vinculada(s)</div>' + nfeHtml;
   document.getElementById('modal-grid').insertAdjacentElement('afterend', nfeSec);
-  const evts=(d.eventos||[]).slice().sort((a,b)=>(a.dhEvento||'').localeCompare(b.dhEvento||''));
-  const base=[{label:'CTe emitido e autorizado',time:fmtDate(d.dataEmissao),done:true},{label:'Manifestado pela transportadora',time:fmtDate(d.dataEmissao),done:d.status!=='Pendente'}];
-  const extras=evts.map(e=>({label:e.label,time:fmtDateTime(e.dhEvento),done:true}));
-  const pending=d.status!=='Entregue'&&d.status!=='Cancelado'?[{label:d.status==='Em trânsito'?'Entregue ao destinatário':'Em trânsito / Entrega',time:null,active:d.status==='Em trânsito'}]:[];
-  document.getElementById('modal-tl').innerHTML=[...base,...extras,...pending].map(e=>`
-    <div class="tl-item"><div class="tl-dot ${e.done?'done':(e.active?'active':'pending')}"></div>
-    <div class="tl-text"><p>${e.label}</p><span>${e.time||'Aguardando'}</span></div></div>`).join('');
+  function renderTimeline(eventosArr) {
+    const evts=(eventosArr||[]).slice().sort((a,b)=>(a.dhEvento||'').localeCompare(b.dhEvento||''));
+    const base=[{label:'CTe emitido e autorizado',time:fmtDate(d.dataEmissao),done:true},{label:'Manifestado pela transportadora',time:fmtDate(d.dataEmissao),done:d.status!=='Pendente'}];
+    const extras=evts.map(e=>({label:e.label,time:fmtDateTime(e.dhEvento),done:true}));
+    const pending=d.status!=='Entregue'&&d.status!=='Cancelado'?[{label:d.status==='Em trânsito'?'Entregue ao destinatário':'Em trânsito / Entrega',time:null,active:d.status==='Em trânsito'}]:[];
+    document.getElementById('modal-tl').innerHTML=[...base,...extras,...pending].map(e=>`
+      <div class="tl-item"><div class="tl-dot ${e.done?'done':(e.active?'active':'pending')}"></div>
+      <div class="tl-text"><p>${e.label}</p><span>${e.time||'Aguardando'}</span></div></div>`).join('');
+  }
+  renderTimeline(d.eventos);
+  // O histórico de eventos não vem mais no documento principal (pra não estourar o limite
+  // de 1MB do Firestore) — se este CT-e tem eventos mas eles não estão carregados neste
+  // dispositivo/sessão, busca na coleção separada e re-renderiza a linha do tempo.
+  if (d.hasEventos && (!d.eventos || !d.eventos.length)) {
+    fetchEventosFromCloud(d.chave).then(function(remote){
+      if (currentDetailChave !== d.chave) return; // modal já foi fechado/trocado
+      if (remote && remote.length) { d.eventos = remote; renderTimeline(d.eventos); }
+    });
+  }
   // Delivery photo section
   var existingPhotoSec = document.getElementById('delivery-photo-sec');
   if (existingPhotoSec) existingPhotoSec.remove();
@@ -2624,6 +2680,7 @@ function updateStatus(el) {
   const evt = { label: 'Status alterado para "'+status+'"', dhEvento: now, seq:'manual' };
   if(obs && obs.trim()){ evt.obs = obs.trim(); evt.label += ' — Obs: ' + obs.trim(); cte.observacao = obs.trim(); }
   cte.eventos.push(evt);
+  markEventoPending(chave, evt);
 
   save();renderAdminStats();renderDash();renderAdminCtes();
 }
@@ -2710,6 +2767,7 @@ function saveObservacao() {
   }
 
   cte.eventos.push({ label: label, dhEvento: new Date().toISOString(), seq: 'manual', obs: obs });
+  markEventoPending(cte.chave, cte.eventos[cte.eventos.length-1]);
   save();
   closeModal('modal-obs');
   renderAdminCtes();
@@ -3377,6 +3435,7 @@ function confirmDelivery(chave) {
   cte.driverPhotoTime = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
   cte.eventos = cte.eventos || [];
   cte.eventos.push({ label:'Entrega confirmada pelo motorista ('+slots+' foto(s) de canhoto)', dhEvento: now, seq:'auto' });
+  markEventoPending(chave, cte.eventos[cte.eventos.length-1]);
   save();
   renderDriverList();
 }
