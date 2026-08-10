@@ -601,13 +601,14 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
         <div class="table-header">
           <span class="table-title">Comparativo: mesmo dia em cada mês</span>
           <div class="search-row">
-            <input type="number" id="fin-dia-comp" min="1" max="31" placeholder="Dia (ex: 5)" oninput="renderComparativoDia()" style="width:120px;padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+            <input type="number" id="fin-dia-comp-de" min="1" max="31" placeholder="Do dia (ex: 1)" oninput="renderComparativoDia()" style="width:130px;padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+            <input type="number" id="fin-dia-comp-ate" min="1" max="31" placeholder="Até o dia (ex: 7)" oninput="renderComparativoDia()" style="width:130px;padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
           </div>
         </div>
         <div style="overflow-x:auto;">
         <table>
-          <thead><tr><th>Mês</th><th>Nº CT-es</th><th>Valor faturado</th></tr></thead>
-          <tbody id="fin-comp-tbody"><tr class="empty-row"><td colspan="3">Digite um dia (1–31) acima pra comparar</td></tr></tbody>
+          <thead><tr><th>Mês</th><th>Nº CT-es</th><th>Valor faturado</th><th>Variação</th></tr></thead>
+          <tbody id="fin-comp-tbody"><tr class="empty-row"><td colspan="4">Preencha "Do dia" (e opcionalmente "Até o dia") acima pra comparar</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -2125,10 +2126,12 @@ function renderAdminCtes() {
 function renderComparativoDia() {
   const tbody = document.getElementById('fin-comp-tbody');
   if (!tbody) return;
-  const diaRaw = (document.getElementById('fin-dia-comp')||{}).value || '';
-  const dia = parseInt(diaRaw);
-  if (!diaRaw || isNaN(dia) || dia < 1 || dia > 31) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="3">Digite um dia (1–31) acima pra comparar</td></tr>';
+  const deRaw = (document.getElementById('fin-dia-comp-de')||{}).value || '';
+  const ateRaw = (document.getElementById('fin-dia-comp-ate')||{}).value || '';
+  const diaDe = parseInt(deRaw);
+  const diaAte = ateRaw ? parseInt(ateRaw) : diaDe;
+  if (!deRaw || isNaN(diaDe) || diaDe < 1 || diaDe > 31 || isNaN(diaAte) || diaAte < diaDe || diaAte > 31) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Preencha "Do dia" (e opcionalmente "Até o dia") pra comparar</td></tr>';
     return;
   }
   const fc = (document.getElementById('fin-fc')||{}).value || '';
@@ -2139,24 +2142,52 @@ function renderComparativoDia() {
   ctes.forEach(function(c){
     const k = dataOnlyKey(c.dataEmissao); // YYYY-MM-DD
     if (!k) return;
-    if (parseInt(k.slice(8,10)) !== dia) return;
+    const dia = parseInt(k.slice(8,10));
+    if (dia < diaDe || dia > diaAte) return;
     const mk = k.slice(0,7); // YYYY-MM
     if (!porMes[mk]) porMes[mk] = {count:0, valor:0};
     porMes[mk].count++;
     porMes[mk].valor += parseFloat(c.valor||0);
   });
 
-  const meses = Object.keys(porMes).sort().reverse();
+  // Ordem cronológica (mais antigo → mais recente) — assim a tendência se lê naturalmente
+  // de cima pra baixo, como um gráfico deitado.
+  const meses = Object.keys(porMes).sort();
+  const faixaLabel = diaDe === diaAte ? ('Dia '+diaDe) : ('Dia '+diaDe+'–'+diaAte);
   if (!meses.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="3">Nenhum CT-e emitido no dia '+dia+' em nenhum mês</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nenhum CT-e emitido no período "'+faixaLabel+'" em nenhum mês</td></tr>';
     return;
   }
   const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  tbody.innerHTML = meses.map(function(mk){
+  const valores = meses.map(function(mk){ return porMes[mk].valor; });
+  const maxValor = Math.max.apply(null, valores);
+  const maiorMes = meses[valores.indexOf(Math.max.apply(null, valores))];
+  const menorMes = meses[valores.indexOf(Math.min.apply(null, valores))];
+
+  tbody.innerHTML = meses.map(function(mk, i){
     const f = porMes[mk];
     const partes = mk.split('-');
-    const label = 'Dia '+dia+' de '+nomesMes[parseInt(partes[1])-1]+'/'+partes[0];
-    return '<tr><td><b>'+label+'</b></td><td>'+f.count+'</td><td>'+fmtVal(f.valor)+'</td></tr>';
+    const label = nomesMes[parseInt(partes[1])-1]+'/'+partes[0];
+    const pct = f.valor / (maxValor || 1) * 100;
+    const anterior = i > 0 ? porMes[meses[i-1]].valor : null;
+    let variacaoHtml = '<span style="color:var(--text2);">—</span>';
+    if (anterior != null) {
+      if (anterior === 0) {
+        variacaoHtml = f.valor > 0 ? '<span style="color:var(--green);">novo</span>' : '<span style="color:var(--text2);">—</span>';
+      } else {
+        const variacao = ((f.valor - anterior) / anterior) * 100;
+        const up = variacao >= 0;
+        variacaoHtml = '<span style="color:'+(up?'var(--green)':'var(--red)')+';font-weight:600;">'+(up?'▲':'▼')+' '+Math.abs(variacao).toFixed(0)+'%</span>';
+      }
+    }
+    let rowBg = '';
+    if (mk === maiorMes && meses.length > 1) rowBg = 'background:var(--green-bg);';
+    else if (mk === menorMes && meses.length > 1) rowBg = 'background:rgba(192,57,43,0.08);';
+    return '<tr style="'+rowBg+'">'
+      + '<td><b>'+label+'</b>'+(mk===maiorMes&&meses.length>1?' <span style="font-size:10px;color:var(--green);">▲ melhor</span>':'')+(mk===menorMes&&meses.length>1?' <span style="font-size:10px;color:var(--red);">▼ pior</span>':'')+'</td>'
+      + '<td>'+f.count+'</td>'
+      + '<td style="min-width:180px;"><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;background:var(--bg1);border-radius:4px;height:8px;overflow:hidden;max-width:100px;"><div style="width:'+pct+'%;background:var(--accent);height:100%;border-radius:4px;"></div></div><span style="white-space:nowrap;">'+fmtVal(f.valor)+'</span></div></td>'
+      + '<td>'+variacaoHtml+'</td></tr>';
   }).join('');
 }
 
