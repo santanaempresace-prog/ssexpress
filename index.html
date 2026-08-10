@@ -1185,67 +1185,115 @@ function markEventoPending(chave, eventObj) {
 
 let eventosMigratedChaves = new Set(); // chaves cujo histórico completo já foi migrado pra coleção separada nesta sessão
 let nfeChavesMigratedChaves = new Set(); // idem, pras chaves de NF-e
+const CTES_COL = () => db.collection('cargotrack_ctes');
+let dirtyCtes = new Set(); // chaves de CT-es alterados localmente, ainda não gravados na nuvem
+function markCteDirty(chave) { if (chave) dirtyCtes.add(chave); }
+
+// Prepara um CT-e pra gravação individual (cada CT-e agora é seu próprio documento no
+// Firestore, então não existe mais o limite de 1MB compartilhado entre todos). Ainda assim
+// mantemos fotos/eventos/chaves de NF-e em coleções à parte, por serem os campos mais
+// pesados e raramente necessários na listagem do dia a dia.
+function sanitizeCteForCloud(c) {
+  const copy = Object.assign({}, c);
+  if (copy.driverPhotos) { delete copy.driverPhotos; copy.hasDriverPhoto = true; }
+  if (copy.driverPhoto) { delete copy.driverPhoto; copy.hasDriverPhoto = true; }
+  if (copy.obsPhoto) { delete copy.obsPhoto; copy.hasObsPhoto = true; }
+  if (copy.eventos && copy.eventos.length) {
+    copy.hasEventos = true;
+    if (!eventosMigratedChaves.has(copy.chave)) {
+      copy.eventos.forEach(function(ev){ markEventoPending(copy.chave, ev); });
+      eventosMigratedChaves.add(copy.chave);
+    }
+  }
+  delete copy.eventos;
+  if (copy.nfeChaves && copy.nfeChaves.length) {
+    copy.hasNfeChaves = true;
+    if (!nfeChavesMigratedChaves.has(copy.chave) && cloudReady) {
+      db.collection('cargotrack_nfechaves').doc(copy.chave).set({ chaves: copy.nfeChaves, savedAt: new Date().toISOString() })
+        .catch(function(e){ console.error('Erro ao salvar chaves de NF-e na nuvem:', e); });
+      nfeChavesMigratedChaves.add(copy.chave);
+    }
+    delete copy.nfeChaves;
+  }
+  return copy;
+}
+
+function flushPendingEventos() {
+  var chavesPendentes = Object.keys(pendingEventos);
+  if (!chavesPendentes.length) return;
+  var toFlush = pendingEventos;
+  pendingEventos = {};
+  chavesPendentes.forEach(function(ch){
+    db.collection('cargotrack_eventos').doc(ch).set(
+      { eventos: firebase.firestore.FieldValue.arrayUnion.apply(null, toFlush[ch]), savedAt: new Date().toISOString() },
+      { merge: true }
+    ).catch(function(e){ console.error('Erro ao salvar histórico de eventos na nuvem:', e); });
+  });
+}
+
+function flushDirtyCtes() {
+  if (!cloudReady || !dirtyCtes.size) return;
+  var chaves = Array.from(dirtyCtes);
+  dirtyCtes = new Set();
+  chaves.forEach(function(ch){
+    var c = store.ctes.find(function(x){ return x.chave === ch; });
+    if (!c) {
+      // CT-e foi removido localmente — apaga o documento correspondente também
+      CTES_COL().doc(ch).delete().catch(function(){});
+      return;
+    }
+    CTES_COL().doc(ch).set(sanitizeCteForCloud(c)).catch(function(e){
+      console.error('Erro ao salvar CT-e #'+c.numero+' na nuvem:', e);
+      showCloudSyncError('⚠ O CT-e #'+c.numero+' não foi salvo na nuvem (' + (e.message||'erro desconhecido') + ').');
+    });
+  });
+}
+
+// Versão em lote (usa writeBatch, até 450 por vez) — muito mais rápida e confiável que
+// escrever um por um quando dezenas/centenas de CT-es mudam de uma vez só (ex: importação
+// de um ZIP com muitos XMLs antigos).
+async function flushDirtyCtesBatched(onProgress) {
+  if (!cloudReady || !dirtyCtes.size) return;
+  var chaves = Array.from(dirtyCtes);
+  dirtyCtes = new Set();
+  var CHUNK = 450;
+  var done = 0;
+  for (var i = 0; i < chaves.length; i += CHUNK) {
+    var slice = chaves.slice(i, i + CHUNK);
+    var batch = db.batch();
+    slice.forEach(function(ch){
+      var c = store.ctes.find(function(x){ return x.chave === ch; });
+      if (c) batch.set(CTES_COL().doc(ch), sanitizeCteForCloud(c));
+      else batch.delete(CTES_COL().doc(ch));
+    });
+    try {
+      await batch.commit();
+      done += slice.length;
+      if (onProgress) onProgress(done, chaves.length);
+    } catch(e) {
+      console.error('Erro ao salvar lote de CT-es na nuvem:', e);
+      showCloudSyncError('⚠ Parte dos CT-es importados não foi salva na nuvem (' + (e.message||'erro desconhecido') + ').');
+    }
+  }
+  flushPendingEventos();
+}
 
 function pushToCloud() {
   if (!cloudReady) return;
   suppressNextSnapshot = true;
-  // Nunca envia fotos (base64, pesadas), histórico de eventos, nem as chaves de NF-e
-  // dentro do documento principal — isso estouraria o limite de 1MB do Firestore e
-  // travaria a sincronização de todo mundo. Ficam guardados em coleções separadas.
-  const sanitized = Object.assign({}, store, {
-    ctes: (store.ctes||[]).map(function(c){
-      const heavy = c.driverPhotos || c.driverPhoto || c.obsPhoto || (c.eventos && c.eventos.length) || (c.nfeChaves && c.nfeChaves.length);
-      if (!heavy) return c;
-      const copy = Object.assign({}, c);
-      if (copy.driverPhotos) { delete copy.driverPhotos; copy.hasDriverPhoto = true; }
-      if (copy.driverPhoto) { delete copy.driverPhoto; copy.hasDriverPhoto = true; }
-      if (copy.obsPhoto) { delete copy.obsPhoto; copy.hasObsPhoto = true; }
-      if (copy.eventos && copy.eventos.length) {
-        copy.hasEventos = true;
-        // Na primeira vez que este CT-e é "enxugado", migra o histórico que já estava
-        // embutido no documento principal pra coleção separada, pra nada se perder.
-        if (!eventosMigratedChaves.has(copy.chave)) {
-          copy.eventos.forEach(function(ev){ markEventoPending(copy.chave, ev); });
-          eventosMigratedChaves.add(copy.chave);
-        }
-      }
-      delete copy.eventos;
-      if (copy.nfeChaves && copy.nfeChaves.length) {
-        copy.hasNfeChaves = true;
-        if (!nfeChavesMigratedChaves.has(copy.chave) && cloudReady) {
-          db.collection('cargotrack_nfechaves').doc(copy.chave).set({ chaves: copy.nfeChaves, savedAt: new Date().toISOString() })
-            .catch(function(e){ console.error('Erro ao salvar chaves de NF-e na nuvem:', e); });
-          nfeChavesMigratedChaves.add(copy.chave);
-        }
-        delete copy.nfeChaves;
-      }
-      return copy;
-    })
-  });
-  // Migra eventos pendentes JÁ (não espera o documento principal salvar com sucesso) —
-  // assim, mesmo que o doc principal ainda esteja grande demais numa primeira tentativa,
-  // o histórico de eventos sai de lá e a próxima tentativa já vem menor.
-  var chavesPendentes = Object.keys(pendingEventos);
-  if (chavesPendentes.length) {
-    var toFlush = pendingEventos;
-    pendingEventos = {};
-    chavesPendentes.forEach(function(ch){
-      db.collection('cargotrack_eventos').doc(ch).set(
-        { eventos: firebase.firestore.FieldValue.arrayUnion.apply(null, toFlush[ch]), savedAt: new Date().toISOString() },
-        { merge: true }
-      ).catch(function(e){ console.error('Erro ao salvar histórico de eventos na nuvem:', e); });
-    });
-  }
+  // Os CT-es NÃO fazem mais parte do documento principal — cada um vira seu próprio
+  // documento na coleção 'cargotrack_ctes' (ver flushDirtyCtes/markCteDirty). O documento
+  // principal agora só guarda usuários, clientes e configurações — pequeno pra sempre,
+  // não importa quantos milhares de CT-es o sistema acumule.
+  const sanitized = Object.assign({}, store);
+  delete sanitized.ctes;
+  flushPendingEventos();
+  flushDirtyCtes();
   CLOUD_DOC().set(sanitized).then(function(){
     hideCloudSyncError();
   }).catch(function(e){
     console.error('Erro ao salvar na nuvem:', e);
-    var payloadSize = 0;
-    try { payloadSize = new Blob([JSON.stringify(sanitized)]).size; } catch(err) {}
-    var sizeHint = payloadSize > 900000
-      ? ' O sistema acumulou muitos dados e está perto do limite de 1MB por documento do Firestore — provavelmente é esse o motivo. Vale limpar/arquivar entregas antigas.'
-      : '';
-    showCloudSyncError('⚠ Uma alteração não foi salva na nuvem (' + (e.message||'erro desconhecido') + ').' + sizeHint + ' Os outros dispositivos (ex: app do motorista) podem não receber essa atualização até isso ser resolvido.');
+    showCloudSyncError('⚠ Uma alteração não foi salva na nuvem (' + (e.message||'erro desconhecido') + '). Os outros dispositivos (ex: app do motorista) podem não receber essa atualização até isso ser resolvido.');
   });
 }
 
@@ -1422,6 +1470,7 @@ function reabrirEntrega(chave) {
   cte.eventos = cte.eventos || [];
   cte.eventos.push({ label: 'Entrega reaberta pelo admin (foto incorreta removida, motorista vai tirar novamente)', dhEvento: now, seq: 'manual' });
   markEventoPending(chave, cte.eventos[cte.eventos.length-1]);
+  markCteDirty(chave);
 
   if (cloudReady) {
     db.collection('cargotrack_photos').doc(chave).delete().catch(function(e){ console.error('Erro ao apagar foto na nuvem:', e); });
@@ -1619,40 +1668,81 @@ function bootApp() {
   const localStoreAtBoot = store; // dados deste dispositivo, salvos ANTES de qualquer contato com a nuvem
 
   CLOUD_DOC().get().then(function(doc) {
+    var legacyCtesToMigrate = null; // se o doc principal antigo ainda tinha CT-es embutidos
+
     if (doc.exists) {
       const cloudStore = doc.data();
       if (isStoreEmpty(cloudStore) && !isStoreEmpty(localStoreAtBoot)) {
-        // A nuvem está vazia (provavelmente outro dispositivo criou o documento sem dados),
-        // mas ESTE dispositivo tem dados reais. Este dispositivo vira a fonte da verdade
-        // e corrige o documento vazio na nuvem, em vez de perder os dados locais.
         store = localStoreAtBoot;
-        pushToCloud();
+        if (store.ctes && store.ctes.length) legacyCtesToMigrate = store.ctes;
       } else {
+        if (cloudStore.ctes && cloudStore.ctes.length) legacyCtesToMigrate = cloudStore.ctes;
         store = cloudStore;
         localStorage.setItem(KEY, JSON.stringify(store));
       }
     } else {
       // Primeira vez: ainda não existe nada na nuvem — envia os dados locais/padrão pra lá
-      CLOUD_DOC().set(store).catch(function(e){ console.error('Erro ao inicializar dados na nuvem:', e); });
+      if (store.ctes && store.ctes.length) legacyCtesToMigrate = store.ctes;
+      var initStore = Object.assign({}, store);
+      delete initStore.ctes;
+      CLOUD_DOC().set(initStore).catch(function(e){ console.error('Erro ao inicializar dados na nuvem:', e); });
     }
-    finishBoot();
 
-    // Escuta mudanças em tempo real vindas de outros dispositivos
+    // Busca os CT-es na coleção própria (formato atual). Se ela ainda estiver vazia mas
+    // existiam CT-es no formato antigo (embutidos no doc principal), migra automaticamente
+    // — cada CT-e vira um documento próprio, sem limite de tamanho compartilhado.
+    CTES_COL().get().then(function(snap){
+      if (!snap.empty) {
+        store.ctes = snap.docs.map(function(d){ return d.data(); });
+        if (loadingText) loadingText.textContent = 'Carregando dados...';
+      } else if (legacyCtesToMigrate && legacyCtesToMigrate.length) {
+        store.ctes = legacyCtesToMigrate;
+        if (loadingText) loadingText.textContent = 'Organizando '+legacyCtesToMigrate.length+' CT-e(s) (só na primeira vez)...';
+        legacyCtesToMigrate.forEach(function(c){ markCteDirty(c.chave); });
+        flushDirtyCtes();
+      } else {
+        store.ctes = store.ctes || [];
+      }
+      finishBoot();
+      refreshCurrentView();
+    }).catch(function(e){
+      console.error('Erro ao carregar CT-es da nuvem:', e);
+      store.ctes = legacyCtesToMigrate || store.ctes || [];
+      finishBoot();
+    });
+
+    // Escuta mudanças em tempo real vindas de outros dispositivos (dados "core": usuários, clientes, config)
     CLOUD_DOC().onSnapshot(function(doc) {
       if (suppressNextSnapshot) { suppressNextSnapshot = false; return; }
       if (!doc.exists) return;
       const incoming = doc.data();
-      if (isStoreEmpty(incoming) && !isStoreEmpty(store)) {
-        // Proteção extra: nunca aceitar uma atualização vazia vinda de outro dispositivo
-        // se este já tem dados reais carregados.
-        return;
-      }
-      store = incoming;
+      if (isStoreEmpty(Object.assign({}, incoming, {ctes: store.ctes})) && !isStoreEmpty(store)) return;
+      const ctesAtual = store.ctes;
+      store = Object.assign({}, incoming, { ctes: ctesAtual });
       localStorage.setItem(KEY, JSON.stringify(store));
       refreshCurrentView();
     }, function(err) {
       console.error('Erro na sincronização em tempo real:', err);
     });
+
+    // Escuta mudanças em tempo real nos CT-es (outro dispositivo assumiu uma entrega,
+    // confirmou foto, etc.) — atualiza só os que mudaram, sem recarregar tudo.
+    CTES_COL().onSnapshot(function(snap) {
+      var changed = false;
+      snap.docChanges().forEach(function(change){
+        var data = change.doc.data();
+        var idx = store.ctes.findIndex(function(c){ return c.chave === data.chave; });
+        if (change.type === 'removed') {
+          if (idx > -1) { store.ctes.splice(idx,1); changed = true; }
+        } else if (dirtyCtes.has(data.chave)) {
+          // Mudança que este próprio dispositivo acabou de enviar — ignora o eco.
+        } else {
+          if (idx > -1) store.ctes[idx] = data; else store.ctes.push(data);
+          changed = true;
+        }
+      });
+      if (changed) { localStorage.setItem(KEY, JSON.stringify(store)); refreshCurrentView(); }
+    }, function(err){ console.error('Erro na sincronização de CT-es em tempo real:', err); });
   }).catch(function(e) {
     console.error('Não foi possível conectar à nuvem, usando dados locais:', e);
     if (loadingText) loadingText.textContent = 'Sem conexão com a nuvem — usando dados salvos neste dispositivo.';
@@ -1672,10 +1762,17 @@ function refreshFromCloudNow() {
   CLOUD_DOC().get().then(function(doc) {
     if (!doc.exists) return;
     const incoming = doc.data();
-    if (isStoreEmpty(incoming) && !isStoreEmpty(store)) return; // proteção contra doc vazio
-    store = incoming;
+    if (isStoreEmpty(Object.assign({}, incoming, {ctes: store.ctes})) && !isStoreEmpty(store)) return; // proteção contra doc vazio
+    const ctesAtual = store.ctes;
+    store = Object.assign({}, incoming, { ctes: ctesAtual });
     localStorage.setItem(KEY, JSON.stringify(store));
     refreshCurrentView();
+    CTES_COL().get().then(function(snap){
+      if (snap.empty && store.ctes.length) return; // proteção contra coleção vazia por erro passageiro
+      store.ctes = snap.docs.map(function(d){ return d.data(); });
+      localStorage.setItem(KEY, JSON.stringify(store));
+      refreshCurrentView();
+    }).catch(function(){});
   }).catch(function(e) { console.error('Erro ao atualizar dados ao voltar pro app:', e); });
 }
 document.addEventListener('visibilitychange', function() {
@@ -2050,7 +2147,7 @@ function populateSelects() {
 }
 
 // ─── XML PARSING — CTe ────────────────────────────────────────
-function parseCteXml(xmlStr, fname) {
+function parseCteXml(xmlStr, fname, skipSave) {
   try {
     const doc = new DOMParser().parseFromString(xmlStr,'text/xml');
     if (doc.querySelector('parsererror')) return {ok:false,msg:'XML inválido ou mal formado'};
@@ -2134,7 +2231,9 @@ function parseCteXml(xmlStr, fname) {
     const statusInicial = isAntigo ? 'Entregue' : 'Manifestado';
     const cte = { chave:chave||`gen-${numero}-${Date.now()}`, numero, serie, dataEmissao, valor, peso, volumes:String(volumes), origem, destino, remNome, destNome, tomadorCnpj, tomadorNome, destCnpj, destCep, destEndereco:destEndFormatado, status:statusInicial, clientId:client?client.id:null, eventos:[], xmlFile:fname, nfeChaves:nfeChaves, nfeNumeros:nfeNumeros };
     if (isAntigo) cte.entregueEm = dataEmissao;
-    store.ctes.push(cte); save();
+    store.ctes.push(cte);
+    markCteDirty(cte.chave);
+    if (!skipSave) save();
     saveXmlToCloud(cte.chave, xmlStr);
     return {ok:true, msg:`CTe #${numero} importado${isAntigo?' → marcado como Entregue (retroativo)':''}${client?' → '+client.name:' (sem cliente — vincule na aba CTes)'}`, needsLink:!client, chave:cte.chave, numero};
   } catch(e) { return {ok:false,msg:'Erro: '+e.message}; }
@@ -2171,6 +2270,7 @@ function parseEventoXml(xmlStr, fname) {
     cte.eventos.push({tpEvento, dhEvento, label, seq:nSeq});
     markEventoPending(cte.chave, cte.eventos[cte.eventos.length-1]);
     if (mapped) cte.status=mapped.status;
+    markCteDirty(cte.chave);
     save();
     return {ok:true, msg:`CTe #${cte.numero} → "${label}"${mapped?' → status: '+mapped.status:''}`};
   } catch(e) { return {ok:false,msg:'Erro: '+e.message}; }
@@ -2212,9 +2312,14 @@ function handleFiles(files, tipo) {
           for (const xmlPath of xmlFiles) {
             const content = await zip.files[xmlPath].async('string');
             const fname = xmlPath.split('/').pop();
-            const res = tipo==='cte' ? parseCteXml(content, fname) : parseEventoXml(content, fname);
+            const res = tipo==='cte' ? parseCteXml(content, fname, true) : parseEventoXml(content, fname);
             addLogRow(logEl, res.ok, fname, res.msg, res.ok && res.needsLink ? res.chave : null);
             if (res.ok) { ok++; if (tipo==='cte' && res.chave) chavesImportadas.push(res.chave); } else { err++; }
+          }
+          if (tipo==='cte' && dirtyCtes.size) {
+            if (progEl) progEl.textContent = `Salvando ${dirtyCtes.size} CT-e(s) na nuvem...`;
+            await flushDirtyCtesBatched(function(done,total){ if (progEl) progEl.textContent = `Salvando na nuvem: ${done}/${total}...`; });
+            save(); // salva também o resto do store (ex: clientes novos criados durante a importação)
           }
           if (progEl) progEl.textContent = `ZIP processado: ${ok} importado(s)${err?' — '+err+' erro(s)':''}`;
           renderAdminStats(); renderDash(); renderAdminCtes();
@@ -2459,7 +2564,7 @@ function confirmLink() {
   const clientId=parseInt(document.getElementById('link-select').value);
   if(!clientId||!pendingLink) return;
   const cte=store.ctes.find(c=>c.chave===pendingLink);
-  if(cte){cte.clientId=clientId;save();}
+  if(cte){cte.clientId=clientId;markCteDirty(cte.chave);save();}
   closeModal('modal-link'); refreshAdmin();
 }
 
@@ -2676,7 +2781,7 @@ function saveClient() {
     const id = store.nextClientId++;
     store.clients.push({ id, name: nome.toUpperCase(), cnpj, user, fantasia, situacao, municipio, telefone, email, cep, endereco, lastAccess: null });
     store.users.push({ user, pass: senha, role: 'client', clientId: id, name: nome.toUpperCase() });
-    store.ctes.filter(c => !c.clientId && cc(c.tomadorCnpj) === cnpj).forEach(c => c.clientId = id);
+    store.ctes.filter(c => !c.clientId && cc(c.tomadorCnpj) === cnpj).forEach(c => { c.clientId = id; markCteDirty(c.chave); });
     al.className='alert-box ok'; al.textContent=`Cliente "${nome.toUpperCase()}" cadastrado com sucesso!`;
   }
   save(); refreshAdmin();
@@ -2687,7 +2792,7 @@ function removeClient(id) {
   if(!confirm('Remover este cliente? Os CTes ficam sem vinculação.')) return;
   store.clients=store.clients.filter(c=>c.id!==id);
   store.users=store.users.filter(u=>!(u.role==='client'&&u.clientId===id));
-  store.ctes.filter(c=>c.clientId===id).forEach(c=>c.clientId=null);
+  store.ctes.filter(c=>c.clientId===id).forEach(c=>{ c.clientId=null; markCteDirty(c.chave); });
   save(); refreshAdmin();
 }
 
@@ -2708,6 +2813,7 @@ function updateStatus(el) {
   if(obs && obs.trim()){ evt.obs = obs.trim(); evt.label += ' — Obs: ' + obs.trim(); cte.observacao = obs.trim(); }
   cte.eventos.push(evt);
   markEventoPending(chave, evt);
+  markCteDirty(chave);
 
   save();renderAdminStats();renderDash();renderAdminCtes();
 }
@@ -2795,6 +2901,7 @@ function saveObservacao() {
 
   cte.eventos.push({ label: label, dhEvento: new Date().toISOString(), seq: 'manual', obs: obs });
   markEventoPending(cte.chave, cte.eventos[cte.eventos.length-1]);
+  markCteDirty(cte.chave);
   save();
   closeModal('modal-obs');
   renderAdminCtes();
@@ -3463,6 +3570,7 @@ function confirmDelivery(chave) {
   cte.eventos = cte.eventos || [];
   cte.eventos.push({ label:'Entrega confirmada pelo motorista ('+slots+' foto(s) de canhoto)', dhEvento: now, seq:'auto' });
   markEventoPending(chave, cte.eventos[cte.eventos.length-1]);
+  markCteDirty(chave);
   save();
   renderDriverList();
 }
@@ -3562,6 +3670,7 @@ function assignCtes() {
       cte.status = 'Saiu para entrega';
       cte.routeOrder = nextOrder++;
       cte.dataSaida = dataSaida;
+      markCteDirty(cte.chave);
     }
   });
   save();
@@ -3857,7 +3966,7 @@ function autoSortRoute(driverId) {
     if (!cb) return -1;
     return parseInt(ca) - parseInt(cb);
   });
-  ctes.forEach(function(c, i){ c.routeOrder = i; });
+  ctes.forEach(function(c, i){ c.routeOrder = i; markCteDirty(c.chave); });
   save();
   renderRouteOrder();
 }
@@ -3944,7 +4053,7 @@ function renderRouteOrder() {
         .sort(function(a,b){ return (a.routeOrder!=null?a.routeOrder:999)-(b.routeOrder!=null?b.routeOrder:999); });
       var moved = all.splice(dragSrcIdx, 1)[0];
       all.splice(i, 0, moved);
-      all.forEach(function(c, idx){ c.routeOrder = idx; });
+      all.forEach(function(c, idx){ c.routeOrder = idx; markCteDirty(c.chave); });
       save(); dragSrcIdx = null; renderRouteOrder();
     });
 
