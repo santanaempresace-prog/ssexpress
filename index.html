@@ -579,7 +579,7 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
 
     <!-- FINANCEIRO TAB -->
     <div class="tab-content" id="tab-financeiro">
-      <div class="page-header"><div><h2>💰 Financeiro</h2><p>Acompanhamento de faturamento mês a mês</p></div></div>
+      <div class="page-header"><div><h2>💰 Financeiro</h2><p>Acompanhamento de faturamento mês a mês — clique num mês pra ver a quebra por dezena de dias (01–10, 11–20, 21–31)</p></div></div>
       <div class="table-card">
         <div class="table-header">
           <span class="table-title">Resumo mensal</span>
@@ -2099,10 +2099,11 @@ function renderFinanceiro() {
   ctes.forEach(function(c){
     const k = dataOnlyKey(c.dataEmissao).slice(0,7); // YYYY-MM
     if (!k) return;
-    if (!groups[k]) groups[k] = {count:0, valor:0, entregues:0, valorEntregue:0, aberto:0, valorAberto:0};
+    if (!groups[k]) groups[k] = {count:0, valor:0, entregues:0, valorEntregue:0, aberto:0, valorAberto:0, ctes:[]};
     const v = parseFloat(c.valor||0);
     groups[k].count++;
     groups[k].valor += v;
+    groups[k].ctes.push(c);
     if (c.status === 'Entregue') { groups[k].entregues++; groups[k].valorEntregue += v; }
     else if (c.status !== 'Cancelado') { groups[k].aberto++; groups[k].valorAberto += v; }
   });
@@ -2122,9 +2123,12 @@ function renderFinanceiro() {
     const g = groups[k];
     const partes = k.split('-'), y = partes[0], m = partes[1];
     const label = nomesMes[parseInt(m)-1] + '/' + y;
-    return '<tr><td><b>'+label+'</b></td><td>'+g.count+'</td><td>'+fmtVal(g.valor)+'</td>'
+    const rowId = 'fin-detail-' + k;
+    return '<tr class="fin-month-row" style="cursor:pointer;" onclick="toggleFinDetail(\''+rowId+'\',this)">'
+      + '<td><span class="fin-caret" style="display:inline-block;transition:transform .15s;margin-right:6px;">▸</span><b>'+label+'</b></td><td>'+g.count+'</td><td>'+fmtVal(g.valor)+'</td>'
       + '<td style="color:var(--green)">'+g.entregues+'</td><td style="color:var(--green)">'+fmtVal(g.valorEntregue)+'</td>'
-      + '<td style="color:var(--amber)">'+g.aberto+'</td><td style="color:var(--amber)">'+fmtVal(g.valorAberto)+'</td></tr>';
+      + '<td style="color:var(--amber)">'+g.aberto+'</td><td style="color:var(--amber)">'+fmtVal(g.valorAberto)+'</td></tr>'
+      + '<tr id="'+rowId+'" style="display:none;"><td colspan="7" style="padding:0;">'+renderFaixasDia(g.ctes)+'</td></tr>';
   }).join('');
 
   const totalValor = ctes.reduce(function(s,c){return s+parseFloat(c.valor||0);}, 0);
@@ -2136,6 +2140,40 @@ function renderFinanceiro() {
     + '<div class="stat-card"><div class="slabel">Já entregue</div><div class="sval green">'+fmtVal(totalEntregue)+'</div></div>'
     + '<div class="stat-card"><div class="slabel">Em aberto</div><div class="sval amber">'+fmtVal(totalAberto)+'</div></div>'
     + '<div class="stat-card"><div class="slabel">Média por CT-e</div><div class="sval" style="font-size:16px">'+fmtVal(mediaCte)+'</div></div>';
+}
+
+// Quebra os CT-es de um mês em faixas de 10 dias (01-10, 11-20, 21-fim), pra comparar o
+// desempenho dentro do próprio mês (ex: primeira quinzena vs segunda, começo vs fim).
+function renderFaixasDia(ctesDoMes) {
+  const faixas = [
+    {label:'Dia 01–10', de:1, ate:10, count:0, valor:0},
+    {label:'Dia 11–20', de:11, ate:20, count:0, valor:0},
+    {label:'Dia 21–31', de:21, ate:31, count:0, valor:0},
+  ];
+  ctesDoMes.forEach(function(c){
+    const k = dataOnlyKey(c.dataEmissao);
+    if (!k) return;
+    const dia = parseInt(k.slice(8,10));
+    const faixa = faixas.find(function(f){ return dia >= f.de && dia <= f.ate; });
+    if (faixa) { faixa.count++; faixa.valor += parseFloat(c.valor||0); }
+  });
+  return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:12px 16px 16px 34px;background:var(--bg1);">'
+    + faixas.map(function(f){
+        return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">'
+          + '<div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">'+f.label+'</div>'
+          + '<div style="font-size:15px;font-weight:600;">'+fmtVal(f.valor)+'</div>'
+          + '<div style="font-size:12px;color:var(--text2);">'+f.count+' CT-e(s)</div></div>';
+      }).join('')
+    + '</div>';
+}
+
+function toggleFinDetail(rowId, trEl) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const opening = row.style.display === 'none';
+  row.style.display = opening ? 'table-row' : 'none';
+  const caret = trEl.querySelector('.fin-caret');
+  if (caret) caret.style.transform = opening ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 
 function populateSelects() {
