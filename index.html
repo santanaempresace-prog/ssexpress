@@ -597,11 +597,25 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
         </div>
         <div id="fin-periodo-detalhe"></div>
       </div>
+      <div class="table-card" style="margin-bottom:20px;">
+        <div class="table-header">
+          <span class="table-title">Comparativo: mesmo dia em cada mês</span>
+          <div class="search-row">
+            <input type="number" id="fin-dia-comp" min="1" max="31" placeholder="Dia (ex: 5)" oninput="renderComparativoDia()" style="width:120px;padding:7px 11px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;" />
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Mês</th><th>Nº CT-es</th><th>Valor faturado</th></tr></thead>
+          <tbody id="fin-comp-tbody"><tr class="empty-row"><td colspan="3">Digite um dia (1–31) acima pra comparar</td></tr></tbody>
+        </table>
+        </div>
+      </div>
       <div class="table-card">
         <div class="table-header">
           <span class="table-title">Resumo mensal</span>
           <div class="search-row">
-            <select id="fin-fc" onchange="renderFinanceiro()"><option value="">Todos os clientes</option></select>
+            <select id="fin-fc" onchange="renderFinanceiro();renderComparativoDia();"><option value="">Todos os clientes</option></select>
             <select id="fin-ano" onchange="renderFinanceiro()"><option value="">Todos os anos</option></select>
           </div>
         </div>
@@ -1949,7 +1963,7 @@ function adminTab(name, btn) {
   if (name==='clientes') renderClients();
   if (name==='ctes') { renderAdminCtes(); populateStatusSelects(); }
   if (name==='status') renderStatusManager();
-  if (name==='financeiro') renderFinanceiro();
+  if (name==='financeiro') { renderFinanceiro(); renderComparativoDia(); }
   if (name==='motoristas') renderDriversTab();
   if (name==='conta') { loadAdminProfile(); document.getElementById('pw-alert').className='alert-box'; document.getElementById('reset-alert').className='alert-box'; document.getElementById('profile-alert').className='alert-box'; }
 }
@@ -2104,6 +2118,47 @@ function renderAdminCtes() {
   tbody.innerHTML=rows.join('');
 }
 
+
+// Compara o mesmo dia do mês (ex: dia 5) em todos os meses que têm dado, em linhas
+// empilhadas — simples de bater o olho e ver se um mês foi melhor ou pior que o outro
+// naquele dia específico. Respeita o filtro de cliente já selecionado acima.
+function renderComparativoDia() {
+  const tbody = document.getElementById('fin-comp-tbody');
+  if (!tbody) return;
+  const diaRaw = (document.getElementById('fin-dia-comp')||{}).value || '';
+  const dia = parseInt(diaRaw);
+  if (!diaRaw || isNaN(dia) || dia < 1 || dia > 31) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="3">Digite um dia (1–31) acima pra comparar</td></tr>';
+    return;
+  }
+  const fc = (document.getElementById('fin-fc')||{}).value || '';
+  let ctes = [...store.ctes];
+  if (fc) ctes = ctes.filter(c=>c.clientId==fc);
+
+  const porMes = {};
+  ctes.forEach(function(c){
+    const k = dataOnlyKey(c.dataEmissao); // YYYY-MM-DD
+    if (!k) return;
+    if (parseInt(k.slice(8,10)) !== dia) return;
+    const mk = k.slice(0,7); // YYYY-MM
+    if (!porMes[mk]) porMes[mk] = {count:0, valor:0};
+    porMes[mk].count++;
+    porMes[mk].valor += parseFloat(c.valor||0);
+  });
+
+  const meses = Object.keys(porMes).sort().reverse();
+  if (!meses.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="3">Nenhum CT-e emitido no dia '+dia+' em nenhum mês</td></tr>';
+    return;
+  }
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  tbody.innerHTML = meses.map(function(mk){
+    const f = porMes[mk];
+    const partes = mk.split('-');
+    const label = 'Dia '+dia+' de '+nomesMes[parseInt(partes[1])-1]+'/'+partes[0];
+    return '<tr><td><b>'+label+'</b></td><td>'+f.count+'</td><td>'+fmtVal(f.valor)+'</td></tr>';
+  }).join('');
+}
 
 function renderFinanceiro() {
   const fc = (document.getElementById('fin-fc')||{}).value || '';
