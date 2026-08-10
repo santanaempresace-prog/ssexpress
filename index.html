@@ -1184,16 +1184,17 @@ function markEventoPending(chave, eventObj) {
 }
 
 let eventosMigratedChaves = new Set(); // chaves cujo histórico completo já foi migrado pra coleção separada nesta sessão
+let nfeChavesMigratedChaves = new Set(); // idem, pras chaves de NF-e
 
 function pushToCloud() {
   if (!cloudReady) return;
   suppressNextSnapshot = true;
-  // Nunca envia fotos (base64, pesadas) nem o histórico de eventos dentro do documento
-  // principal — isso estouraria o limite de 1MB do Firestore e travaria a sincronização
-  // de todo mundo. Fotos e eventos são guardados em coleções separadas por CT-e.
+  // Nunca envia fotos (base64, pesadas), histórico de eventos, nem as chaves de NF-e
+  // dentro do documento principal — isso estouraria o limite de 1MB do Firestore e
+  // travaria a sincronização de todo mundo. Ficam guardados em coleções separadas.
   const sanitized = Object.assign({}, store, {
     ctes: (store.ctes||[]).map(function(c){
-      const heavy = c.driverPhotos || c.driverPhoto || c.obsPhoto || (c.eventos && c.eventos.length);
+      const heavy = c.driverPhotos || c.driverPhoto || c.obsPhoto || (c.eventos && c.eventos.length) || (c.nfeChaves && c.nfeChaves.length);
       if (!heavy) return c;
       const copy = Object.assign({}, c);
       if (copy.driverPhotos) { delete copy.driverPhotos; copy.hasDriverPhoto = true; }
@@ -1209,26 +1210,34 @@ function pushToCloud() {
         }
       }
       delete copy.eventos;
+      if (copy.nfeChaves && copy.nfeChaves.length) {
+        copy.hasNfeChaves = true;
+        if (!nfeChavesMigratedChaves.has(copy.chave) && cloudReady) {
+          db.collection('cargotrack_nfechaves').doc(copy.chave).set({ chaves: copy.nfeChaves, savedAt: new Date().toISOString() })
+            .catch(function(e){ console.error('Erro ao salvar chaves de NF-e na nuvem:', e); });
+          nfeChavesMigratedChaves.add(copy.chave);
+        }
+        delete copy.nfeChaves;
+      }
       return copy;
     })
   });
+  // Migra eventos pendentes JÁ (não espera o documento principal salvar com sucesso) —
+  // assim, mesmo que o doc principal ainda esteja grande demais numa primeira tentativa,
+  // o histórico de eventos sai de lá e a próxima tentativa já vem menor.
+  var chavesPendentes = Object.keys(pendingEventos);
+  if (chavesPendentes.length) {
+    var toFlush = pendingEventos;
+    pendingEventos = {};
+    chavesPendentes.forEach(function(ch){
+      db.collection('cargotrack_eventos').doc(ch).set(
+        { eventos: firebase.firestore.FieldValue.arrayUnion.apply(null, toFlush[ch]), savedAt: new Date().toISOString() },
+        { merge: true }
+      ).catch(function(e){ console.error('Erro ao salvar histórico de eventos na nuvem:', e); });
+    });
+  }
   CLOUD_DOC().set(sanitized).then(function(){
     hideCloudSyncError();
-    // Agora que o doc principal foi salvo, sincroniza os eventos novos que ainda não
-    // foram confirmados na nuvem — usa arrayUnion, que só ADICIONA ao histórico já salvo
-    // (guardado à parte, não conta pro limite de 1MB do documento principal), sem risco
-    // de sobrescrever/perder eventos antigos que este dispositivo não tenha carregado.
-    var chaves = Object.keys(pendingEventos);
-    if (chaves.length) {
-      var toFlush = pendingEventos;
-      pendingEventos = {};
-      chaves.forEach(function(ch){
-        db.collection('cargotrack_eventos').doc(ch).set(
-          { eventos: firebase.firestore.FieldValue.arrayUnion.apply(null, toFlush[ch]), savedAt: new Date().toISOString() },
-          { merge: true }
-        ).catch(function(e){ console.error('Erro ao salvar histórico de eventos na nuvem:', e); });
-      });
-    }
   }).catch(function(e){
     console.error('Erro ao salvar na nuvem:', e);
     var payloadSize = 0;
@@ -1261,6 +1270,13 @@ function fetchEventosFromCloud(chave) {
   if (!cloudReady) return Promise.resolve(null);
   return db.collection('cargotrack_eventos').doc(chave).get()
     .then(function(doc){ return doc.exists ? (doc.data().eventos || null) : null; })
+    .catch(function(){ return null; });
+}
+
+function fetchNfeChavesFromCloud(chave) {
+  if (!cloudReady) return Promise.resolve(null);
+  return db.collection('cargotrack_nfechaves').doc(chave).get()
+    .then(function(doc){ return doc.exists ? (doc.data().chaves || null) : null; })
     .catch(function(){ return null; });
 }
 
@@ -2268,25 +2284,36 @@ function openDetail(chave) {
   `;
 
   // Build NF-e cards and inject
-  const nfes = d.nfeChaves && d.nfeChaves.length ? d.nfeChaves : [];
-  const nfeHtml = nfes.length
-    ? nfes.map(function(ch) {
-        const sefazUrl = 'https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&nfe=' + ch;
-        return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;">'
-          + '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:5px;">Chave NF-e</div>'
-          + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;word-break:break-all;color:var(--text);margin-bottom:8px;">' + ch + '</div>'
-          + '<a href="' + sefazUrl + '" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:12px;font-weight:500;border-radius:7px;background:var(--accent);color:#fff;text-decoration:none;">🔍 Consultar na SEFAZ</a>'
-          + '</div>';
-      }).join('')
-    : '<div style="font-size:13px;color:var(--text2);">NF-e não identificada no XML. Número de volumes: ' + (d.volumes||'—') + '</div>';
-  // Remove qualquer seção de NF-e injetada em uma abertura anterior do modal
-  // (evita duplicar a seção "Nota(s) Fiscal(is) vinculada(s)" a cada abertura)
-  document.querySelectorAll('.nfe-linked-section').forEach(function(el){ el.remove(); });
-  const nfeSec = document.createElement('div');
-  nfeSec.className = 'nfe-linked-section';
-  nfeSec.style.marginTop = '4px';
-  nfeSec.innerHTML = '<div class="section-sep">Nota(s) Fiscal(is) vinculada(s)</div>' + nfeHtml;
-  document.getElementById('modal-grid').insertAdjacentElement('afterend', nfeSec);
+  function renderNfeSection(nfeChaves) {
+    const nfes = nfeChaves && nfeChaves.length ? nfeChaves : [];
+    const nfeHtml = nfes.length
+      ? nfes.map(function(ch) {
+          const sefazUrl = 'https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&nfe=' + ch;
+          return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;">'
+            + '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);margin-bottom:5px;">Chave NF-e</div>'
+            + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;word-break:break-all;color:var(--text);margin-bottom:8px;">' + ch + '</div>'
+            + '<a href="' + sefazUrl + '" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:12px;font-weight:500;border-radius:7px;background:var(--accent);color:#fff;text-decoration:none;">🔍 Consultar na SEFAZ</a>'
+            + '</div>';
+        }).join('')
+      : (d.hasNfeChaves ? '<div style="font-size:13px;color:var(--text2);">Carregando chaves de NF-e...</div>' : '<div style="font-size:13px;color:var(--text2);">NF-e não identificada no XML. Número de volumes: ' + (d.volumes||'—') + '</div>');
+    // Remove qualquer seção de NF-e injetada em uma abertura anterior do modal
+    // (evita duplicar a seção "Nota(s) Fiscal(is) vinculada(s)" a cada abertura)
+    document.querySelectorAll('.nfe-linked-section').forEach(function(el){ el.remove(); });
+    const nfeSec = document.createElement('div');
+    nfeSec.className = 'nfe-linked-section';
+    nfeSec.style.marginTop = '4px';
+    nfeSec.innerHTML = '<div class="section-sep">Nota(s) Fiscal(is) vinculada(s)</div>' + nfeHtml;
+    document.getElementById('modal-grid').insertAdjacentElement('afterend', nfeSec);
+  }
+  renderNfeSection(d.nfeChaves);
+  // As chaves de NF-e não vêm mais no documento principal (mesmo motivo dos eventos) —
+  // se não estiverem carregadas neste dispositivo/sessão, busca na coleção separada.
+  if (d.hasNfeChaves && (!d.nfeChaves || !d.nfeChaves.length)) {
+    fetchNfeChavesFromCloud(d.chave).then(function(remote){
+      if (currentDetailChave !== d.chave) return; // modal já foi fechado/trocado
+      if (remote && remote.length) { d.nfeChaves = remote; renderNfeSection(d.nfeChaves); }
+    });
+  }
   function renderTimeline(eventosArr) {
     const evts=(eventosArr||[]).slice().sort((a,b)=>(a.dhEvento||'').localeCompare(b.dhEvento||''));
     const base=[{label:'CTe emitido e autorizado',time:fmtDate(d.dataEmissao),done:true},{label:'Manifestado pela transportadora',time:fmtDate(d.dataEmissao),done:d.status!=='Pendente'}];
