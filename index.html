@@ -1678,6 +1678,7 @@ function bootApp() {
       } else {
         if (cloudStore.ctes && cloudStore.ctes.length) legacyCtesToMigrate = cloudStore.ctes;
         store = cloudStore;
+        store.ctes = store.ctes || [];
         localStorage.setItem(KEY, JSON.stringify(store));
       }
     } else {
@@ -1717,7 +1718,7 @@ function bootApp() {
       if (!doc.exists) return;
       const incoming = doc.data();
       if (isStoreEmpty(Object.assign({}, incoming, {ctes: store.ctes})) && !isStoreEmpty(store)) return;
-      const ctesAtual = store.ctes;
+      const ctesAtual = store.ctes || [];
       store = Object.assign({}, incoming, { ctes: ctesAtual });
       localStorage.setItem(KEY, JSON.stringify(store));
       refreshCurrentView();
@@ -1763,7 +1764,7 @@ function refreshFromCloudNow() {
     if (!doc.exists) return;
     const incoming = doc.data();
     if (isStoreEmpty(Object.assign({}, incoming, {ctes: store.ctes})) && !isStoreEmpty(store)) return; // proteção contra doc vazio
-    const ctesAtual = store.ctes;
+    const ctesAtual = store.ctes || [];
     store = Object.assign({}, incoming, { ctes: ctesAtual });
     localStorage.setItem(KEY, JSON.stringify(store));
     refreshCurrentView();
@@ -3152,6 +3153,7 @@ function showDriverPage() {
   showPage('page-driver');
   document.getElementById('driver-name-label').textContent = currentUser.name || currentUser.user;
   renderDriverList();
+  refreshFromCloudNow(); // garante dados frescos logo no login, sem depender de o boot já ter terminado
 }
 
 function setDriverFilter(f, btn) {
@@ -3188,7 +3190,7 @@ function hasAnyPhoto(cte) {
 
 function renderDriverList() {
   var driverId = currentUser.driverId;
-  var allAssigned = store.ctes.filter(function(c){ return c.driverId === driverId; });
+  var allAssigned = (store.ctes||[]).filter(function(c){ return c.driverId === driverId; });
   // Mostra tudo que ainda está pendente (precisa de ação do motorista) + o que já foi
   // finalizado (Entregue/Devolvido) HOJE. Entregas finalizadas em dias anteriores ficam
   // fora da lista, pra não acumular e atrapalhar com o volume ao longo do tempo.
