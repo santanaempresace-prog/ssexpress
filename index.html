@@ -3076,10 +3076,44 @@ function fetchObsPhotoFromCloud(chave) {
     .then(function(doc){ return doc.exists ? doc.data().photo : null; })
     .catch(function(){ return null; });
 }
+// Apaga o CT-e da nuvem — o documento principal na coleção 'cargotrack_ctes' e também
+// todos os dados satélites dele (eventos, chaves de NF-e, fotos do canhoto, foto da
+// observação e o XML original). Sem isso, o documento continuaria existindo no Firestore
+// e o listener em tempo real traria o CT-e de volta na próxima sincronização.
+function deleteCteFromCloud(chave) {
+  if (!cloudReady || !chave) return Promise.resolve();
+  const batch = db.batch();
+  batch.delete(CTES_COL().doc(chave));
+  batch.delete(db.collection('cargotrack_eventos').doc(chave));
+  batch.delete(db.collection('cargotrack_nfechaves').doc(chave));
+  batch.delete(db.collection('cargotrack_photos').doc(chave));
+  batch.delete(db.collection('cargotrack_obs_photos').doc(chave));
+  batch.delete(db.collection('cargotrack_xmls').doc(chave));
+  return batch.commit();
+}
+
 function removeCte(chave) {
-  if(!confirm('Excluir este CTe?')) return;
-  store.ctes=store.ctes.filter(c=>c.chave!==chave);
-  save(); refreshAdmin();
+  const cte = store.ctes.find(function(c){ return c.chave === chave; });
+  const label = cte && cte.numero ? ('CT-e #' + cte.numero) : 'este CT-e';
+  if (!confirm('Excluir ' + label + ' definitivamente?\n\nIsso apaga o CT-e, o histórico de eventos, as fotos do canhoto e o XML — em todos os dispositivos. Não dá pra desfazer.')) return;
+
+  // Se não há conexão com a nuvem, apagar só localmente não adianta: o CT-e voltaria
+  // sozinho assim que o sistema sincronizasse de novo. Melhor avisar e não fazer nada.
+  if (!cloudReady) {
+    alert('Sem conexão com a nuvem no momento.\n\nSe o CT-e for apagado agora, ele voltaria sozinho na próxima sincronização. Verifique a internet e tente de novo.');
+    return;
+  }
+
+  deleteCteFromCloud(chave).then(function(){
+    dirtyCtes.delete(chave);
+    store.ctes = store.ctes.filter(function(c){ return c.chave !== chave; });
+    save();
+    refreshAdmin();
+    hideCloudSyncError();
+  }).catch(function(e){
+    console.error('Erro ao excluir CT-e na nuvem:', e);
+    alert('Não foi possível excluir o CT-e na nuvem.\n\n' + (e.message || 'Erro desconhecido') + '\n\nO CT-e foi mantido para não ficar diferente em cada dispositivo. Tente novamente.');
+  });
 }
 
 // ─── STATUS MANAGER ──────────────────────────────────────────
