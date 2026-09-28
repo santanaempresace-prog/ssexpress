@@ -628,6 +628,18 @@ th.chk,td.chk{width:38px;text-align:center;padding-left:10px;padding-right:4px;}
         </div>
       </div>
       <div id="fin-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:20px;"></div>
+      <div class="table-card" style="margin-top:20px;">
+        <div class="table-header">
+          <span class="table-title">🚛 Faturamento por motorista</span>
+          <span style="font-size:12px;color:var(--text2);">Segue os mesmos filtros de cliente, ano e período acima — clique num motorista pra ver mês a mês</span>
+        </div>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Motorista</th><th>Nº CT-es</th><th>Valor faturado</th><th>% do total</th><th>Entregues</th><th>Valor entregue</th><th>Em aberto</th><th>Valor em aberto</th><th>Ticket médio</th></tr></thead>
+          <tbody id="fin-mot-tbody"></tbody>
+        </table>
+        </div>
+      </div>
     </div>
 
     <!-- MOTORISTAS TAB -->
@@ -2233,6 +2245,7 @@ function renderFinanceiro() {
   if (!meses.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum dado encontrado para os filtros aplicados</td></tr>';
     cardsEl.innerHTML = '';
+    renderFinMotoristas(ctes);
     return;
   }
 
@@ -2258,6 +2271,94 @@ function renderFinanceiro() {
     + '<div class="stat-card"><div class="slabel">Já entregue</div><div class="sval green">'+fmtVal(totalEntregue)+'</div></div>'
     + '<div class="stat-card"><div class="slabel">Em aberto</div><div class="sval amber">'+fmtVal(totalAberto)+'</div></div>'
     + '<div class="stat-card"><div class="slabel">Média por CT-e</div><div class="sval" style="font-size:16px">'+fmtVal(mediaCte)+'</div></div>';
+  renderFinMotoristas(ctes);
+}
+
+// Faturamento agrupado por motorista, usando o mesmo conjunto de CT-es já filtrado
+// (cliente, ano e período) do resumo mensal. CT-es cancelados ficam de fora, e os que
+// ainda não foram atribuídos a ninguém aparecem numa linha "Sem motorista" no final.
+function renderFinMotoristas(ctesFiltrados) {
+  const tbody = document.getElementById('fin-mot-tbody');
+  if (!tbody) return;
+  const ctes = (ctesFiltrados||[]).filter(function(c){ return c.status !== 'Cancelado'; });
+  const drivers = store.users.filter(function(u){ return u.role === 'driver'; });
+
+  const groups = {};
+  ctes.forEach(function(c){
+    const key = c.driverId ? String(c.driverId) : 'sem';
+    if (!groups[key]) {
+      let nome;
+      if (key === 'sem') nome = 'Sem motorista';
+      else {
+        const d = drivers.find(function(u){ return u.driverId === c.driverId; });
+        nome = d ? d.name : (c.driverName || ('Motorista #' + c.driverId));
+      }
+      groups[key] = {nome:nome, count:0, valor:0, entregues:0, valorEntregue:0, aberto:0, valorAberto:0, ctes:[]};
+    }
+    const g = groups[key], v = parseFloat(c.valor||0);
+    g.count++; g.valor += v; g.ctes.push(c);
+    if (c.status === 'Entregue') { g.entregues++; g.valorEntregue += v; }
+    else { g.aberto++; g.valorAberto += v; }
+  });
+
+  const keys = Object.keys(groups).sort(function(a,b){
+    if (a === 'sem') return 1;
+    if (b === 'sem') return -1;
+    return groups[b].valor - groups[a].valor;
+  });
+  if (!keys.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Nenhum CT-e encontrado para os filtros aplicados</td></tr>';
+    return;
+  }
+
+  const totalGeral = keys.reduce(function(s,k){ return s + groups[k].valor; }, 0);
+  const maxMot = Math.max.apply(null, keys.filter(function(k){ return k !== 'sem'; }).map(function(k){ return groups[k].valor; }).concat([0]));
+
+  tbody.innerHTML = keys.map(function(k){
+    const g = groups[k];
+    const pct = totalGeral ? (g.valor / totalGeral * 100) : 0;
+    const barPct = (k !== 'sem' && maxMot) ? (g.valor / maxMot * 100) : 0;
+    const ticket = g.count ? g.valor / g.count : 0;
+    const rowId = 'fin-mot-detail-' + k;
+    const nomeStyle = k === 'sem' ? 'color:var(--text2);font-style:italic;' : '';
+    return '<tr style="cursor:pointer;" onclick="toggleFinDetail(\''+rowId+'\',this)">'
+      + '<td><span class="fin-caret" style="display:inline-block;transition:transform .15s;margin-right:6px;">▸</span><b style="'+nomeStyle+'">'+g.nome+'</b></td>'
+      + '<td>'+g.count+'</td>'
+      + '<td style="min-width:170px;"><div style="display:flex;align-items:center;gap:8px;">'
+      +   (k !== 'sem' ? '<div style="flex:1;background:var(--bg1);border-radius:4px;height:8px;overflow:hidden;max-width:90px;"><div style="width:'+barPct+'%;background:var(--accent);height:100%;border-radius:4px;"></div></div>' : '')
+      +   '<span style="white-space:nowrap;">'+fmtVal(g.valor)+'</span></div></td>'
+      + '<td>'+pct.toFixed(1).replace('.',',')+'%</td>'
+      + '<td style="color:var(--green)">'+g.entregues+'</td><td style="color:var(--green)">'+fmtVal(g.valorEntregue)+'</td>'
+      + '<td style="color:var(--amber)">'+g.aberto+'</td><td style="color:var(--amber)">'+fmtVal(g.valorAberto)+'</td>'
+      + '<td>'+fmtVal(ticket)+'</td></tr>'
+      + '<tr id="'+rowId+'" style="display:none;"><td colspan="9" style="padding:0;">'+renderFinMotoristaMeses(g.ctes)+'</td></tr>';
+  }).join('');
+}
+
+// Detalhe mês a mês de um motorista (aberto ao clicar na linha dele).
+function renderFinMotoristaMeses(ctesMot) {
+  const nomesMes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const porMes = {};
+  ctesMot.forEach(function(c){
+    const k = dataOnlyKey(c.dataEmissao).slice(0,7);
+    if (!k) return;
+    if (!porMes[k]) porMes[k] = {count:0, valor:0, entregues:0, valorEntregue:0};
+    const v = parseFloat(c.valor||0);
+    porMes[k].count++; porMes[k].valor += v;
+    if (c.status === 'Entregue') { porMes[k].entregues++; porMes[k].valorEntregue += v; }
+  });
+  const meses = Object.keys(porMes).sort().reverse();
+  if (!meses.length) return '<div style="padding:14px 16px 16px 34px;background:var(--bg1);color:var(--text2);font-size:13px;">Nenhum dado nesse período.</div>';
+  const th = 'text-align:left;font-size:11px;color:var(--text2);padding:4px 8px;';
+  const td = 'padding:5px 8px;font-size:13px;';
+  return '<div style="padding:12px 16px 16px 34px;background:var(--bg1);">'
+    + '<table style="width:100%;border-collapse:collapse;">'
+    + '<thead><tr><th style="'+th+'">Mês</th><th style="'+th+'">Nº CT-es</th><th style="'+th+'">Valor faturado</th><th style="'+th+'">Entregues</th><th style="'+th+'">Valor entregue</th></tr></thead>'
+    + '<tbody>' + meses.map(function(k){
+        const f = porMes[k], p = k.split('-');
+        return '<tr><td style="'+td+'">'+nomesMes[parseInt(p[1])-1]+'/'+p[0]+'</td><td style="'+td+'">'+f.count+'</td><td style="'+td+'">'+fmtVal(f.valor)+'</td>'
+          + '<td style="'+td+'color:var(--green)">'+f.entregues+'</td><td style="'+td+'color:var(--green)">'+fmtVal(f.valorEntregue)+'</td></tr>';
+      }).join('') + '</tbody></table></div>';
 }
 
 // Quebra um conjunto de CT-es dia a dia, pra comparar o desempenho de cada dia entre si.
