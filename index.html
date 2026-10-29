@@ -1372,20 +1372,73 @@ function fetchNfeChavesFromCloud(chave) {
     .catch(function(){ return null; });
 }
 
+// Firestore aceita no máximo 1.048.576 bytes por documento. Todas as fotos de
+// canhoto de um CT-e ficam num documento só — então, quando o CT-e tem muitas
+// NF-es (ex.: 9 canhotos), a soma passa do limite. Aqui as fotos são
+// recomprimidas automaticamente até o total caber com folga.
+var PHOTO_DOC_BUDGET = 900000; // bytes (deixa margem pros outros campos)
+
+function shrinkDataUrl(dataUrl, maxLen) {
+  return new Promise(function(resolve) {
+    if (!dataUrl || dataUrl.length <= maxLen) { resolve(dataUrl); return; }
+    var img = new Image();
+    img.onload = function() {
+      var w = img.width, h = img.height;
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d');
+      var quality = 0.8, out = dataUrl, tries = 0;
+      while (tries < 14) {
+        canvas.width = Math.max(1, Math.round(w)); canvas.height = Math.max(1, Math.round(h));
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        out = canvas.toDataURL('image/jpeg', quality);
+        if (out.length <= maxLen) break;
+        // primeiro baixa a qualidade; depois reduz o tamanho da imagem
+        if (quality > 0.55) quality -= 0.1;
+        else { w *= 0.85; h *= 0.85; }
+        tries++;
+      }
+      resolve(out);
+    };
+    img.onerror = function(){ resolve(dataUrl); };
+    img.src = dataUrl;
+  });
+}
+
+function fitPhotosToBudget(photosArr) {
+  var filled = photosArr.filter(function(p){ return !!p; }).length || 1;
+  var total = 0;
+  photosArr.forEach(function(p){ total += (p||'').length; });
+  if (total <= PHOTO_DOC_BUDGET) return Promise.resolve(photosArr);
+  var perPhoto = Math.floor(PHOTO_DOC_BUDGET / filled);
+  return Promise.all(photosArr.map(function(p){ return p ? shrinkDataUrl(p, perPhoto) : Promise.resolve(p); }));
+}
+
 function savePhotosToCloud(chave, photosArr) {
   if (!chave || !photosArr || !photosArr.length) return;
   if (!cloudReady) {
     showCloudSyncError('⚠ Sem conexão com a nuvem no momento — a foto ficou salva só neste aparelho. Assim que a conexão voltar, abra o app de novo pra tentar reenviar.');
     return;
   }
-  db.collection('cargotrack_photos').doc(chave).set({ photos: photosArr, savedAt: new Date().toISOString() })
+  var originals = photosArr.slice();
+  fitPhotosToBudget(originals).then(function(fitted) {
+    // guarda as versões menores também no aparelho, pra não crescer de novo
+    // (só troca as fotos que não foram refeitas enquanto comprimia)
+    var cte = store.ctes.find(function(c){ return c.chave === chave; });
+    if (cte && cte.driverPhotos && fitted !== originals) {
+      fitted.forEach(function(p, i){ if (cte.driverPhotos[i] === originals[i]) cte.driverPhotos[i] = p; });
+      try { save(); } catch(err) {}
+    }
+    return db.collection('cargotrack_photos').doc(chave).set({ photos: fitted, savedAt: new Date().toISOString() });
+  })
     .then(function(){ hideCloudSyncError(); })
     .catch(function(e){
-      console.error('Erro ao salvar foto(s) na nuvem (pode ser grande demais):', e);
-      var totalSize = 0;
-      try { photosArr.forEach(function(p){ totalSize += (p||'').length; }); } catch(err) {}
-      var sizeHint = totalSize > 900000 ? ' A foto pode estar grande demais.' : '';
-      showCloudSyncError('⚠ A foto de comprovante não foi salva na nuvem (' + (e.message||'erro desconhecido') + ').' + sizeHint + ' O admin não vai ver essa foto até isso ser resolvido — tente tirar a foto de novo com uma conexão melhor.');
+      console.error('Erro ao salvar foto(s) na nuvem:', e);
+      var msg = (e && e.message) || 'erro desconhecido';
+      var tooBig = /exceeds the maximum allowed size|maximum allowed size/i.test(msg);
+      showCloudSyncError(tooBig
+        ? '⚠ As fotos deste CT-e ficaram grandes demais para a nuvem mesmo após compressão. Avise o admin.'
+        : '⚠ A foto de comprovante não foi salva na nuvem (' + msg + '). O admin não vai ver essa foto até isso ser resolvido — tente de novo com uma conexão melhor.');
     });
 }
 
@@ -3676,7 +3729,7 @@ const CANHOTO_ALTURA_CM = 2.8;
 const CANHOTO_ASPECT = CANHOTO_LARGURA_CM / CANHOTO_ALTURA_CM;
 // Tamanho de saída PADRÃO — toda foto sai exatamente com essas dimensões, não importa o celular.
 // 2000px de largura garante boa nitidez de texto/assinatura mesmo numa faixa fina.
-const CANHOTO_OUT_W = 2000;
+const CANHOTO_OUT_W = 1600;
 const CANHOTO_OUT_H = Math.round(CANHOTO_OUT_W / CANHOTO_ASPECT);
 
 let cameraStream = null;
@@ -3781,7 +3834,7 @@ function captureFromCamera() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, CANHOTO_OUT_W, CANHOTO_OUT_H);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
 
   const chave = currentPhotoCardId;
   const slotIndex = currentPhotoSlotIndex;
