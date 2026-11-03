@@ -1470,6 +1470,7 @@ function savePhotosToCloud(chave, photosArr) {
     var latest = (cte && cte.driverPhotos) || photosArr;
     return savePhotosToCloudNow(chave, latest);
   });
+  return photoSaveQueue[chave];
 }
 function savePhotosToCloudNow(chave, photosArr) {
   var originals = photosArr.slice();
@@ -1483,16 +1484,19 @@ function savePhotosToCloudNow(chave, photosArr) {
     }
     return db.collection('cargotrack_photos').doc(chave).set({ photos: fitted, savedAt: new Date().toISOString() });
   })
-    .then(function(){ hideCloudSyncError(); })
+    .then(function(){ hideCloudSyncError(); return true; })
     .catch(function(e){
       console.error('Erro ao salvar foto(s) na nuvem:', e);
+      lastPhotoSaveError = (e && e.message) || 'erro desconhecido';
       var msg = (e && e.message) || 'erro desconhecido';
       var tooBig = /exceeds the maximum allowed size|maximum allowed size/i.test(msg);
       showCloudSyncError(tooBig
         ? '⚠ As fotos deste CT-e ficaram grandes demais para a nuvem mesmo após compressão. Avise o admin.'
         : '⚠ A foto de comprovante não foi salva na nuvem (' + msg + '). O admin não vai ver essa foto até isso ser resolvido — tente de novo com uma conexão melhor.');
+      return false;
     });
 }
+var lastPhotoSaveError = '';
 
 function fetchPhotosFromCloud(chave) {
   if (!cloudReady) return Promise.resolve(null);
@@ -3992,17 +3996,73 @@ function confirmDelivery(chave) {
     return;
   }
   if (!confirm('Confirmar entrega do CTe #'+cte.numero+'?')) return;
+  if (!cloudReady) {
+    alert('Sem conexão com o sistema agora. A entrega NÃO foi confirmada — tente de novo quando tiver sinal.');
+    return;
+  }
+  var antes = { status: cte.status, entregueEm: cte.entregueEm, statusUpdatedAt: cte.statusUpdatedAt, driverPhotoTime: cte.driverPhotoTime };
   var now = new Date().toISOString();
   cte.status = 'Entregue';
   cte.entregueEm = now;
   cte.statusUpdatedAt = now;
   cte.driverPhotoTime = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  cte.hasDriverPhoto = true;
   cte.eventos = cte.eventos || [];
-  cte.eventos.push({ label:'Entrega confirmada pelo motorista ('+slots+' foto(s) de canhoto)', dhEvento: now, seq:'auto' });
-  markEventoPending(chave, cte.eventos[cte.eventos.length-1]);
-  markCteDirty(chave);
-  save();
-  renderDriverList();
+  var ev = { label:'Entrega confirmada pelo motorista ('+slots+' foto(s) de canhoto)', dhEvento: now, seq:'auto' };
+  cte.eventos.push(ev);
+  persistLocal();
+  showDeliverySending(true);
+
+  // 1) garante que TODAS as fotos estão na nuvem (reenvia o conjunto completo)
+  // 2) grava o CT-e como Entregue e espera a confirmação do servidor
+  var TIMEOUT = 25000;
+  function comTimeout(p) {
+    return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('TIMEOUT')); }, TIMEOUT); })]);
+  }
+  comTimeout(savePhotosToCloud(chave, cte.driverPhotos || getDriverPhotosArr(cte)))
+    .then(function(okFotos){
+      if (!okFotos) throw new Error('FOTOS: ' + (lastPhotoSaveError || 'falha ao enviar as fotos'));
+      return comTimeout(CTES_COL().doc(chave).set(sanitizeCteForCloud(cte)));
+    })
+    .then(function(){
+      markEventoPending(chave, ev);
+      flushPendingEventos();
+      showDeliverySending(false);
+      hideCloudSyncError();
+      renderDriverList();
+    })
+    .catch(function(e){
+      console.error('Falha ao confirmar entrega na nuvem:', e);
+      showDeliverySending(false);
+      var msg = (e && e.message) || 'erro desconhecido';
+      if (msg === 'TIMEOUT') {
+        // Sem resposta do servidor (sinal fraco). O Firebase segue tentando enviar
+        // sozinho em segundo plano — deixa confirmado aqui e avisa o motorista.
+        markEventoPending(chave, ev);
+        markCteDirty(chave);
+        save();
+        showCloudSyncError('⚠ Sinal fraco: a entrega do CT-e #'+cte.numero+' ainda está sendo enviada. NÃO feche o app até este aviso sumir. Se continuar, avise o escritório.');
+        renderDriverList();
+        return;
+      }
+      // Erro de verdade: desfaz a confirmação pra o motorista poder tentar de novo
+      Object.keys(antes).forEach(function(k){ if (antes[k] === undefined) delete cte[k]; else cte[k] = antes[k]; });
+      cte.eventos.pop();
+      persistLocal();
+      renderDriverList();
+      alert('⚠ A entrega NÃO chegou no sistema e foi desfeita neste celular.\n\nMotivo: ' + msg + '\n\nTente confirmar de novo. Se o erro continuar, tire um print desta mensagem e mande pro escritório.');
+    });
+}
+
+function showDeliverySending(on) {
+  var el = document.getElementById('delivery-sending-overlay');
+  if (on && !el) {
+    el = document.createElement('div');
+    el.id = 'delivery-sending-overlay';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;color:#fff;font:600 16px sans-serif;text-align:center;padding:24px;';
+    el.innerHTML = '<div><div class="spinner" style="width:34px;height:34px;border:3px solid #3a3835;border-top-color:#c0392b;border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite;"></div>Enviando entrega e fotos pro sistema...<br><span style="font-weight:400;font-size:13px;opacity:.8">Não feche o app</span></div>';
+    document.body.appendChild(el);
+  } else if (!on && el) el.remove();
 }
 
 // ═══════════════════════════════════════════════════════
