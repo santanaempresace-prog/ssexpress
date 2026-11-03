@@ -1217,8 +1217,49 @@ let currentUser = null;
 let pendingLink = null;
 
 function save() {
-  localStorage.setItem(KEY, JSON.stringify(store)); // cache local (funciona offline)
+  persistLocal(); // cache local (funciona offline)
   pushToCloud();
+}
+
+// Grava o cache local SEM NUNCA travar o app. O localStorage do celular tem limite
+// (~5MB); com milhares de CT-es + várias fotos de canhoto, ele estoura e o
+// setItem lança erro — antes isso interrompia o salvamento da foto no meio
+// (a foto não ia pra nuvem e o contador ficava em 0/N). Agora, se estourar,
+// tenta de novo sem as fotos dos CT-es já finalizados e, por último, sem foto
+// nenhuma (as fotos continuam seguras na nuvem, em cargotrack_photos).
+function persistLocal() {
+  function semFotos(filtro) {
+    var copy = Object.assign({}, store);
+    copy.ctes = (store.ctes || []).map(function(c){
+      if (!c.driverPhotos || !filtro(c)) return c;
+      var x = Object.assign({}, c); delete x.driverPhotos;
+      if (c.driverPhotos.some(Boolean)) x.hasDriverPhoto = true;
+      return x;
+    });
+    return copy;
+  }
+  var tentativas = [
+    function(){ return store; },
+    function(){ return semFotos(function(c){ return c.status === 'Entregue' || c.status === 'Devolvido'; }); },
+    function(){ return semFotos(function(){ return true; }); }
+  ];
+  for (var i = 0; i < tentativas.length; i++) {
+    try { localStorage.setItem(KEY, JSON.stringify(tentativas[i]())); return true; }
+    catch (e) { if (i === tentativas.length - 1) console.warn('Cache local cheio — seguindo só com a nuvem.', e); }
+  }
+  try { localStorage.removeItem(KEY); } catch(e) {}
+  return false;
+}
+
+// Os CT-es que chegam da nuvem NÃO trazem as fotos (ficam em cargotrack_photos).
+// Sempre que a lista é substituída pela versão da nuvem, copiamos de volta as
+// fotos que este aparelho já tinha — senão o contador zerava no meio da entrega
+// e a próxima foto sobrescrevia as anteriores na nuvem.
+function keepLocalPhotos(oldList, newList) {
+  var map = {};
+  (oldList || []).forEach(function(c){ if (c && c.driverPhotos && c.driverPhotos.some(Boolean)) map[c.chave] = c.driverPhotos; });
+  (newList || []).forEach(function(c){ if (c && !c.driverPhotos && map[c.chave]) c.driverPhotos = map[c.chave]; });
+  return newList;
 }
 
 let pendingEventos = {}; // { chave: [eventObj, ...] } — eventos novos ainda não confirmados na nuvem
@@ -1414,20 +1455,31 @@ function fitPhotosToBudget(photosArr) {
   return Promise.all(photosArr.map(function(p){ return p ? shrinkDataUrl(p, perPhoto) : Promise.resolve(p); }));
 }
 
+// Fila por CT-e: com 9 canhotos o motorista tira fotos em sequência rápida, e
+// cada envio comprime em tempos diferentes. Sem fila, um envio antigo (com menos
+// fotos) podia terminar depois do novo e apagar as fotos mais recentes na nuvem.
+var photoSaveQueue = {};
 function savePhotosToCloud(chave, photosArr) {
   if (!chave || !photosArr || !photosArr.length) return;
   if (!cloudReady) {
     showCloudSyncError('⚠ Sem conexão com a nuvem no momento — a foto ficou salva só neste aparelho. Assim que a conexão voltar, abra o app de novo pra tentar reenviar.');
     return;
   }
+  photoSaveQueue[chave] = (photoSaveQueue[chave] || Promise.resolve()).then(function(){
+    var cte = store.ctes.find(function(c){ return c.chave === chave; });
+    var latest = (cte && cte.driverPhotos) || photosArr;
+    return savePhotosToCloudNow(chave, latest);
+  });
+}
+function savePhotosToCloudNow(chave, photosArr) {
   var originals = photosArr.slice();
-  fitPhotosToBudget(originals).then(function(fitted) {
+  return fitPhotosToBudget(originals).then(function(fitted) {
     // guarda as versões menores também no aparelho, pra não crescer de novo
     // (só troca as fotos que não foram refeitas enquanto comprimia)
     var cte = store.ctes.find(function(c){ return c.chave === chave; });
     if (cte && cte.driverPhotos && fitted !== originals) {
       fitted.forEach(function(p, i){ if (cte.driverPhotos[i] === originals[i]) cte.driverPhotos[i] = p; });
-      try { save(); } catch(err) {}
+      persistLocal();
     }
     return db.collection('cargotrack_photos').doc(chave).set({ photos: fitted, savedAt: new Date().toISOString() });
   })
@@ -1776,7 +1828,7 @@ function bootApp() {
         if (cloudStore.ctes && cloudStore.ctes.length) legacyCtesToMigrate = cloudStore.ctes;
         store = cloudStore;
         store.ctes = store.ctes || [];
-        localStorage.setItem(KEY, JSON.stringify(store));
+        persistLocal();
       }
     } else {
       // Primeira vez: ainda não existe nada na nuvem — envia os dados locais/padrão pra lá
@@ -1791,7 +1843,7 @@ function bootApp() {
     // — cada CT-e vira um documento próprio, sem limite de tamanho compartilhado.
     CTES_COL().get().then(function(snap){
       if (!snap.empty) {
-        store.ctes = snap.docs.map(function(d){ return d.data(); });
+        store.ctes = keepLocalPhotos((localStoreAtBoot && localStoreAtBoot.ctes) || store.ctes, snap.docs.map(function(d){ return d.data(); }));
         if (loadingText) loadingText.textContent = 'Carregando dados...';
       } else if (legacyCtesToMigrate && legacyCtesToMigrate.length) {
         store.ctes = legacyCtesToMigrate;
@@ -1817,7 +1869,7 @@ function bootApp() {
       if (isStoreEmpty(Object.assign({}, incoming, {ctes: store.ctes})) && !isStoreEmpty(store)) return;
       const ctesAtual = store.ctes || [];
       store = Object.assign({}, incoming, { ctes: ctesAtual });
-      localStorage.setItem(KEY, JSON.stringify(store));
+      persistLocal();
       refreshCurrentView();
     }, function(err) {
       console.error('Erro na sincronização em tempo real:', err);
@@ -1835,11 +1887,11 @@ function bootApp() {
         } else if (dirtyCtes.has(data.chave)) {
           // Mudança que este próprio dispositivo acabou de enviar — ignora o eco.
         } else {
-          if (idx > -1) store.ctes[idx] = data; else store.ctes.push(data);
+          if (idx > -1) { keepLocalPhotos([store.ctes[idx]], [data]); store.ctes[idx] = data; } else store.ctes.push(data);
           changed = true;
         }
       });
-      if (changed) { localStorage.setItem(KEY, JSON.stringify(store)); refreshCurrentView(); }
+      if (changed) { persistLocal(); refreshCurrentView(); }
     }, function(err){ console.error('Erro na sincronização de CT-es em tempo real:', err); });
   }).catch(function(e) {
     console.error('Não foi possível conectar à nuvem, usando dados locais:', e);
@@ -1863,12 +1915,12 @@ function refreshFromCloudNow() {
     if (isStoreEmpty(Object.assign({}, incoming, {ctes: store.ctes})) && !isStoreEmpty(store)) return; // proteção contra doc vazio
     const ctesAtual = store.ctes || [];
     store = Object.assign({}, incoming, { ctes: ctesAtual });
-    localStorage.setItem(KEY, JSON.stringify(store));
+    persistLocal();
     refreshCurrentView();
     CTES_COL().get().then(function(snap){
       if (snap.empty && store.ctes.length) return; // proteção contra coleção vazia por erro passageiro
-      store.ctes = snap.docs.map(function(d){ return d.data(); });
-      localStorage.setItem(KEY, JSON.stringify(store));
+      store.ctes = keepLocalPhotos(store.ctes, snap.docs.map(function(d){ return d.data(); }));
+      persistLocal();
       refreshCurrentView();
     }).catch(function(){});
   }).catch(function(e) { console.error('Erro ao atualizar dados ao voltar pro app:', e); });
@@ -3546,6 +3598,14 @@ function renderDriverList() {
   // Sort by routeOrder
   allMyCtes.sort(function(a,b){ return (a.routeOrder||999) - (b.routeOrder||999); });
 
+  allMyCtes.forEach(function(c){
+    var finalizado = c.status === 'Entregue' || c.status === 'Devolvido';
+    if (!finalizado && c.hasDriverPhoto && !(c.driverPhotos && c.driverPhotos.some(Boolean)) && !c.driverPhoto && !photoHydrating[c.chave] && !photoHydrateTried[c.chave]) {
+      photoHydrateTried[c.chave] = true;
+      hydrateDriverPhotos(c).then(function(){ if (countCapturedPhotos(c)) renderDriverList(); });
+    }
+  });
+
   var ctes = allMyCtes.slice();
   if (driverFilter === 'pending') ctes = ctes.filter(function(c){ return c.status !== 'Entregue' && c.status !== 'Devolvido'; });
   if (driverFilter === 'done')    ctes = ctes.filter(function(c){ return c.status === 'Entregue' || c.status === 'Devolvido'; });
@@ -3846,12 +3906,36 @@ function savePhotoResult(chave, slotIndex, dataUrl) {
   if (!chave) return;
   const cte = store.ctes.find(function(c){ return c.chave === chave; });
   if (!cte) return;
-  cte.driverPhotos = cte.driverPhotos || getDriverPhotosArr(cte);
-  cte.driverPhotos[slotIndex || 0] = dataUrl;
-  delete cte.driverPhoto; // campo antigo (uma foto só) não é mais usado
-  save();
-  savePhotosToCloud(chave, cte.driverPhotos);
-  renderDriverList();
+  // Se este aparelho não tem as fotos anteriores (app reaberto, outro celular…)
+  // mas a nuvem tem, busca primeiro pra não sobrescrever os outros canhotos.
+  var precisaBuscar = !(cte.driverPhotos && cte.driverPhotos.some(Boolean)) && !cte.driverPhoto && cte.hasDriverPhoto;
+  (precisaBuscar ? hydrateDriverPhotos(cte) : Promise.resolve()).then(function(){
+    cte.driverPhotos = cte.driverPhotos || getDriverPhotosArr(cte);
+    cte.driverPhotos[slotIndex || 0] = dataUrl;
+    delete cte.driverPhoto; // campo antigo (uma foto só) não é mais usado
+    markCteDirty(chave);    // marca hasDriverPhoto no CT-e da nuvem
+    save();
+    savePhotosToCloud(chave, cte.driverPhotos);
+    renderDriverList();
+  });
+}
+
+// Traz da nuvem as fotos de canhoto já enviadas (quando o aparelho não as tem).
+var photoHydrating = {};
+var photoHydrateTried = {}; // evita buscar de novo a cada redesenho da lista
+function hydrateDriverPhotos(cte) {
+  if (photoHydrating[cte.chave]) return photoHydrating[cte.chave];
+  photoHydrating[cte.chave] = fetchPhotosFromCloud(cte.chave).then(function(arr){
+    if (arr && arr.length) {
+      var local = cte.driverPhotos || [];
+      var merged = arr.slice();
+      local.forEach(function(p, i){ if (p) merged[i] = p; }); // foto nova deste aparelho tem prioridade
+      cte.driverPhotos = merged;
+      delete cte.driverPhoto;
+      persistLocal();
+    }
+  }).catch(function(){}).then(function(){ delete photoHydrating[cte.chave]; });
+  return photoHydrating[cte.chave];
 }
 
 function compressImage(file, maxDim, quality) {
