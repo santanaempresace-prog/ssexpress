@@ -19,6 +19,7 @@ service cloud.firestore {
     }
     match /fin_lanc/{id} { allow read: if leitor(); allow write: if editor(); }
     match /fin_cfg/{id}  { allow read: if leitor(); allow write: if editor(); }
+    match /fin_anexos/{doc=**} { allow read: if leitor(); allow write: if editor(); }
 
     // RASTREIO: continua aberto, igual a hoje
     match /cargotrack/{doc=**}            { allow read, write: if true; }
