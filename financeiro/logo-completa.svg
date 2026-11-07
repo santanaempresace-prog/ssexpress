@@ -4,6 +4,7 @@
  <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF2A2A"/><stop offset=".6" stop-color="#E30613"/><stop offset="1" stop-color="#A3000B"/></linearGradient>
  <radialGradient id="k1" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#8A5733"/><stop offset=".6" stop-color="#6B4024"/><stop offset="1" stop-color="#4A2A16"/></radialGradient>
  <radialGradient id="k2" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#6E4327"/><stop offset=".6" stop-color="#4E2E19"/><stop offset="1" stop-color="#33190C"/></radialGradient>
+ <linearGradient id="hw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#C9CACF"/></linearGradient>
  <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity=".55"/></filter>
 </defs>
 
@@ -18,7 +19,25 @@
  <path d="M736,211 Q704,211 680,167" fill="none" stroke="#E30613" stroke-width="44" stroke-linecap="round"/>
  <circle cx="469" cy="115" r="46" fill="url(#k1)"/>
  <circle cx="785" cy="115" r="46" fill="url(#k2)"/>
- <path d="M424,109 A46,46 0 0 1 514,109 Q469,89 424,109Z" fill="#160C06"/>
+ <path d="M420,113 A49,49 0 0 1 518,113 Q489,93 469,95 Q449,93 420,113Z" fill="url(#hw)" stroke="#8E9097" stroke-width="1.5"/>
+ <circle cx="426.7" cy="95.3" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="431.7" cy="85.6" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="438.9" cy="77.3" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="447.9" cy="71.0" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="458.1" cy="67.1" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="469.0" cy="65.7" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="479.9" cy="67.1" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="490.1" cy="71.0" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="499.1" cy="77.3" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="506.3" cy="85.6" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="511.3" cy="95.3" r="10" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="442.0" cy="91.8" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="449.1" cy="84.4" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="458.2" cy="79.5" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="468.4" cy="77.7" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="478.6" cy="79.2" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="487.9" cy="83.7" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
+ <circle cx="495.3" cy="90.9" r="9" fill="url(#hw)" stroke="#8E9097" stroke-width="1.2"/>
  <path d="M740,109 A46,46 0 0 1 830,109 Q785,89 740,109Z" fill="#120904"/>
  <g transform="translate(614,155) scale(1.3)">
   <path d="M-64,14 C-50,-6 -30,-18 -6,-20 L22,-20 C30,-20 34,-12 28,-6 L8,-4 L30,6 C38,10 34,22 24,20 L-30,26 C-46,28 -58,26 -64,14Z" fill="#6B4024"/>
