@@ -236,6 +236,7 @@ td .d2{display:block;font-size:12px;color:var(--muted)}
 .ptab td:nth-child(2) input{width:132px}.ptab td:nth-child(3) input{width:92px}
 .ptab .pill{font-size:11px;padding:2px 6px}
 @media (max-width:420px){.ptab td:nth-child(2) input{width:118px}.ptab td:nth-child(3) input{width:80px}}
+body.soltar::after{content:"Solte aqui o comprovante (PDF ou foto)";position:fixed;inset:12px;border:3px dashed var(--accent);border-radius:16px;background:rgba(227,6,19,.08);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:28px;font-style:italic;font-weight:700;color:var(--accent-ink);z-index:80;pointer-events:none}
 .prog{height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin:8px 0}
 .prog > div{height:100%;background:var(--good)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -820,6 +821,15 @@ document.addEventListener('paste', ev=>{
   const arqs=fs.map(f=>(f.name&&f.name!=='image.png')? (f.type?f:new File([f],f.name,{type:'application/pdf'})) : arquivoDeBlob(f));
   if(PASTE_ALVO) PASTE_ALVO(arqs); else escolherLancamento(arqs);
 });
+// Arrastar e soltar (computador): arraste o PDF ou a foto do WhatsApp para dentro do app
+let arrastando=0;
+document.addEventListener('dragenter',ev=>{ if(!S.canWrite||!S.loaded||!ev.dataTransfer||![...ev.dataTransfer.types].includes('Files')) return; arrastando++; document.body.classList.add('soltar'); });
+document.addEventListener('dragleave',()=>{ arrastando=Math.max(0,arrastando-1); if(!arrastando) document.body.classList.remove('soltar'); });
+document.addEventListener('dragover',ev=>{ if(ev.dataTransfer&&[...ev.dataTransfer.types].includes('Files')) ev.preventDefault(); });
+document.addEventListener('drop',ev=>{ arrastando=0; document.body.classList.remove('soltar');
+  const fs=[...((ev.dataTransfer&&ev.dataTransfer.files)||[])].filter(ehComprovante); if(!fs.length||!S.canWrite||!S.loaded) return;
+  ev.preventDefault(); const arqs=fs.map(f=>f.type?f:new File([f],f.name,{type:'application/pdf'}));
+  if(PASTE_ALVO) PASTE_ALVO(arqs); else escolherLancamento(arqs); });
 async function lerCompartilhados(){
   try{ const c=await caches.open('ss-compartilhados'); const ks=await c.keys(); const out=[];
     for(const k of ks){ const r=await c.match(k); const b=await r.blob(); out.push(new File([b], decodeURIComponent(r.headers.get('x-nome')||'comprovante'), {type:b.type||r.headers.get('content-type')||''})); await c.delete(k); }
