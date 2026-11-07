@@ -8,3 +8,6 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "24826569166",
   appId: "1:24826569166:web:467fc3fd75c7d0ec000b9f"
 };
+
+// Quem pode LANÇAR e ALTERAR. Os outros e-mails liberados nas regras só consultam.
+window.EDITORES = ['santana.empresace@gmail.com'];

@@ -351,10 +351,10 @@ function render(){
   const m=$('#main');
   $('#fab').hidden = !S.canWrite;
   if(!S.loaded){ m.innerHTML = `<div class="empty">${S.loadMsg||'Carregando os dados da SSEXPRESS…'}</div>`; return; }
-  if(!S.lanc.length && !S.cfg){ m.innerHTML = vVazio(); bind(m); return; }
+  if(!S.lanc.length && !S.cfg){ m.innerHTML = S.canWrite? vVazio() : '<div class="card empty" style="max-width:620px;margin:6vh auto 0">Ainda não há lançamentos. Assim que o Caio importar o histórico, os números aparecem aqui.</div>'; bind(m); return; }
   const v=view();
   const fn = {painel:vPainel,lancamentos:vLanc,contas:vContas,dre:vDre,agregados:vAgreg,frota:vFrota,cadastros:vCad}[v];
-  m.innerHTML = (S.canWrite?'':'<div class="banner">Você está vendo em modo leitura. Peça ao dono do app acesso de Colaborador para lançar.</div>') + fn();
+  m.innerHTML = (S.canWrite?'':'<div class="banner info">Acesso somente para consulta. Você vê todos os números, mas não lança nem altera nada.</div>') + fn();
   bind(m);
 }
 function bind(root){
@@ -782,7 +782,7 @@ function openGerar(gid){
 }
 function handleWriteErr(e){
   const c=e&&e.code;
-  if(c==='permission-denied'){ toast('Seu e-mail não tem permissão para gravar. Inclua seu e-mail nas regras do Firebase.'); }
+  if(c==='permission-denied'){ toast('Seu acesso é só para consulta. Não é possível lançar ou alterar.'); }
   else if(c==='resource-exhausted') toast('O limite gratuito do Firebase de hoje acabou. Tente de novo amanhã.');
   else toast('Não consegui salvar agora. Verifique a conexão e tente de novo.');
 }
@@ -830,7 +830,7 @@ function start(){
     if(!user){ showLogin(); return; }
     document.body.classList.remove('anon'); $('#logout').hidden=false;
     S.uid=user.uid; let n=(user.displayName||user.email.split('@')[0]).split(/[ ._\-0-9]/)[0]||'Usuário'; S.nome=n.charAt(0).toUpperCase()+n.slice(1);
-    S.canWrite=true; renderNav(); render();
+    const eds=(window.EDITORES||[]).map(x=>String(x).toLowerCase()); S.canWrite = !eds.length || eds.includes(String(user.email||'').toLowerCase()); S.leitura=!S.canWrite; renderNav(); render();
     const timer=setTimeout(()=>{ if(!S.loaded){ S.loadMsg='Os dados ainda não chegaram. Confira a internet; o app continua tentando sozinho.'; setSync('err','Sem conexão'); render(); } },10000);
     let gotCfg=false, gotLanc=false, failed=false;
     const ready=()=>{ if(gotCfg&&gotLanc&&!failed){ S.loaded=true; render(); } };
