@@ -792,20 +792,32 @@ function openForm(id, preset){
 /* ---------- colar e compartilhar comprovantes ---------- */
 let PASTE_ALVO=null;
 function arquivoDeBlob(blob, base){ const ext=blob.type==='application/pdf'?'pdf':(blob.type.split('/')[1]||'png'); return new File([blob], (base||'comprovante-whatsapp')+'-'+new Date().toISOString().slice(0,16).replace(/[-:T]/g,'')+'.'+ext, {type:blob.type}); }
+const ehComprovante=f=>f&&(String(f.type).startsWith('image/')||f.type==='application/pdf'||/\.pdf$/i.test(f.name||''));
+function escolherArquivo(){
+  return new Promise(ok=>{ const i=document.createElement('input'); i.type='file'; i.accept='image/*,application/pdf,.pdf'; i.multiple=true;
+    i.onchange=()=>ok([...i.files]); i.addEventListener('cancel',()=>ok([])); i.click(); });
+}
 async function lerAreaTransferencia(){
-  if(!navigator.clipboard||!navigator.clipboard.read){ toast('Este celular não deixa colar por botão. Use “Anexar comprovante” ou compartilhe do WhatsApp.'); return []; }
-  try{
-    const itens=await navigator.clipboard.read(); const out=[];
-    for(const it of itens){ const t=it.types.find(x=>x.startsWith('image/')||x==='application/pdf'); if(t) out.push(arquivoDeBlob(await it.getType(t))); }
-    if(!out.length) toast('Não há imagem copiada. No WhatsApp, abra o comprovante, toque nos ⋮ e use Compartilhar → SS Financeiro.');
-    return out;
-  }catch(e){ toast('Não consegui ler o que foi copiado. Permita o acesso à área de transferência ou use Compartilhar do WhatsApp.'); return []; }
+  const out=[];
+  if(navigator.clipboard&&navigator.clipboard.read){
+    try{
+      const itens=await navigator.clipboard.read();
+      for(const it of itens){
+        const t=it.types.find(x=>x==='application/pdf'||x.startsWith('image/')||x==='web application/pdf');
+        if(t){ const blob=await it.getType(t); out.push(arquivoDeBlob(t.includes('pdf')? new Blob([blob],{type:'application/pdf'}) : blob)); }
+      }
+    }catch(_){}
+  }
+  if(out.length) return out;
+  // O navegador não entrega PDF copiado pelo botão: abre o seletor já filtrado para PDF e foto.
+  toast('Escolha o PDF ou a foto do comprovante.');
+  return await escolherArquivo();
 }
 document.addEventListener('paste', ev=>{
-  const fs=[...((ev.clipboardData&&ev.clipboardData.files)||[])].filter(f=>f.type.startsWith('image/')||f.type==='application/pdf');
+  const fs=[...((ev.clipboardData&&ev.clipboardData.files)||[])].filter(ehComprovante);
   if(!fs.length||!S.canWrite||!S.loaded) return;
   ev.preventDefault();
-  const arqs=fs.map(f=>f.name&&f.name!=='image.png'?f:arquivoDeBlob(f));
+  const arqs=fs.map(f=>(f.name&&f.name!=='image.png')? (f.type?f:new File([f],f.name,{type:'application/pdf'})) : arquivoDeBlob(f));
   if(PASTE_ALVO) PASTE_ALVO(arqs); else escolherLancamento(arqs);
 });
 async function lerCompartilhados(){
