@@ -390,6 +390,14 @@ const ACT = {
   drePrev:()=>{S.drePrev=!S.drePrev;render();},
   csv:copyCSV,
   gerar:e=>openGerar(e.dataset.g),
+  juntar:async e=>{ const de=e.dataset.de, para=e.dataset.para;
+    const A=S.lanc.filter(l=>l.parcela&&l.parcela.grupo===para), B=S.lanc.filter(l=>l.parcela&&l.parcela.grupo===de);
+    const nA=new Set(A.map(l=>l.parcela.n)); const conflito=B.filter(l=>nA.has(l.parcela.n));
+    if(conflito.length){ const nums=[...new Set(conflito.map(l=>l.parcela.n))].join(', ');
+      openDlg(`<h2>Parcelas repetidas<button class="x" type="button" aria-label="Fechar">×</button></h2><p>Os dois têm a parcela <b>${nums}</b>. Abra em <b>Lançamentos</b> a que estiver sobrando e exclua, ou corrija o número da parcela. Depois toque em “Juntar os dois” de novo.</p><div class="acts"><span class="sp"></span><button class="btn pri" type="button" id="cj_ok">Entendi</button></div>`); $('#cj_ok').onclick=closeDlg; return; }
+    e.disabled=true; e.textContent='Juntando…';
+    try{ for(const l of B){ await S.db.collection('fin_lanc').doc(l.id).update({parcela:Object.assign({},l.parcela,{grupo:para}), editadoEm:Date.now(), editadoPor:S.nome||''}); } toast('Parcelamentos juntados.'); }
+    catch(err){ e.disabled=false; e.textContent='Juntar os dois'; handleWriteErr(err); } },
   saveCad:saveCad, addConta:()=>cadAdd('contas'), addAgr:()=>cadAdd('agregados'), addVeic:()=>cadAdd('veiculos'),
   delCad:e=>cadDel(e.dataset.list,+e.dataset.i),
   goLanc:e=>{ S.f={mes:e.dataset.mes||'',tipo:e.dataset.tipo||'',status:e.dataset.st||'',cat:e.dataset.cat||'',q:''}; location.hash='lancamentos'; },
@@ -616,6 +624,11 @@ function vAgreg(){
 }
 
 /* ---------- FROTA E PARCELAS ---------- */
+const chaveGrupo=(cat,desc,total)=>cat+'|'+String(desc||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()+'|'+total;
+function grupoExistente(cat,desc,total,excetoId){
+  const l=S.lanc.find(x=>x.id!==excetoId&&x.parcela&&x.parcela.grupo&&chaveGrupo(x.cat,x.desc,x.parcela.total)===chaveGrupo(cat,desc,total));
+  return l?l.parcela.grupo:null;
+}
 function grupos(){
   const g={}; S.lanc.filter(l=>l.parcela&&l.parcela.grupo).forEach(l=>{(g[l.parcela.grupo]=g[l.parcela.grupo]||[]).push(l);});
   return Object.entries(g).map(([id,ls])=>{ ls.sort((a,b)=>a.parcela.n-b.parcela.n); const total=Math.max(...ls.map(l=>l.parcela.total)); const pagas=ls.filter(l=>l.pago);
@@ -630,12 +643,14 @@ function vFrota(){
   const linhas=vs.map(v=>({nome:v.nome,ls:fro.filter(l=>l.veiculo===v.id)})).concat([{nome:'Sem veículo definido',ls:fro.filter(l=>!l.veiculo||!vs.some(v=>v.id===l.veiculo))}]).filter(x=>x.ls.length);
   const tbl=`<div class="tbl-wrap"><table><thead><tr><th>Veículo</th>${fc.map(c=>`<th class="v">${esc(c.nome)}</th>`).join('')}<th class="v">Total</th></tr></thead><tbody>${linhas.map(x=>`<tr><td>${esc(x.nome)}</td>${fc.map(c=>{const v=sum(x.ls.filter(l=>l.cat===c.id),l=>l.valor); return `<td class="v">${v?brl(v):'<span style="color:var(--muted)">—</span>'}</td>`;}).join('')}<td class="v"><b>${brl(sum(x.ls,l=>l.valor))}</b></td></tr>`).join('')||`<tr><td colspan="${fc.length+2}" class="empty">Nenhum gasto de frota lançado.</td></tr>`}</tbody></table></div>`;
   const gs=grupos();
-  const gcards=gs.map(g=>{ const pago=sum(g.pagas,l=>l.valor); const aberto=sum(g.ls.filter(l=>!l.pago),l=>l.valor); const faltaV=g.futuras.length*g.vm; const prox=g.ls.find(l=>!l.pago);
+  const porChave={}; gs.forEach(g=>{ const k=chaveGrupo(g.cat,g.desc,g.total); (porChave[k]=porChave[k]||[]).push(g); });
+  const gcards=gs.map(g=>{ const irmaos=(porChave[chaveGrupo(g.cat,g.desc,g.total)]||[]).filter(x=>x.id!==g.id); const pago=sum(g.pagas,l=>l.valor); const aberto=sum(g.ls.filter(l=>!l.pago),l=>l.valor); const faltaV=g.futuras.length*g.vm; const prox=g.ls.find(l=>!l.pago);
     return `<div class="card"><h3>${esc(g.desc)}<span class="sub">${g.tipo==='E'?'a receber':'a pagar'}</span></h3>
       <div class="prog" title="${g.pagas.length} de ${g.total}"><div style="width:${(g.pagas.length/g.total*100).toFixed(1)}%"></div></div>
       <dl class="kv"><dt>Parcelas quitadas</dt><dd>${g.pagas.length} de ${g.total}</dd><dt>${g.tipo==='E'?'Recebido':'Pago'} até agora</dt><dd>${brl(pago)}</dd><dt>Lançado e em aberto</dt><dd>${brl(aberto)}</dd><dt>Parcelas ainda não lançadas</dt><dd class="${g.futuras.length?'neg':''}">${g.futuras.length} · ~${brl(faltaV)}</dd>${prox?`<dt>Próximo vencimento</dt><dd>${dmy(prox.venc)}</dd>`:''}</dl>
       ${g.anteriores.length?`<p class="note">${g.anteriores.length===1?'A parcela '+g.anteriores[0]+' é anterior':'As parcelas '+g.anteriores.join(', ')+' são anteriores'} ao controle e fica fora da conta.</p>`:''}
-      ${g.futuras.length&&S.canWrite?`<div class="acts"><button class="btn pri sm" type="button" data-act="gerar" data-g="${esc(g.id)}">Lançar as ${g.futuras.length} parcelas seguintes</button></div>`:''}</div>`;}).join('');
+      ${irmaos.length&&S.canWrite?`<div class="banner" style="margin:10px 0 0">Este parcelamento aparece duplicado. <button class="btn sm" type="button" data-act="juntar" data-de="${esc(irmaos[0].id)}" data-para="${esc(g.id)}" style="margin-left:6px">Juntar os dois</button></div>`:''}
+      ${g.futuras.length&&S.canWrite&&!irmaos.length?`<div class="acts"><button class="btn pri sm" type="button" data-act="gerar" data-g="${esc(g.id)}">Lançar as ${g.futuras.length} parcelas seguintes</button></div>`:''}</div>`;}).join('');
   return `<div class="vhead"><div><h2>Frota e parcelas</h2><p>Gastos por veículo e o andamento dos parcelamentos, empréstimos e vendas a prazo.</p></div></div>
   <div class="card" style="margin-bottom:14px"><h3>Gastos de frota por veículo<span class="sub">total ${brl(sum(fro,l=>l.valor))}</span></h3>${tbl}</div>
   <h3 style="margin:20px 0 10px">Parcelamentos</h3>
@@ -645,7 +660,7 @@ function vFrota(){
 function empSaldo(){
   const pe=S.lanc.filter(l=>l.cat==='fin_emprest'); if(!pe.length) return '';
   return `<div class="card" style="margin-top:14px"><h3>Pagamentos de empréstimo<span class="sub">${pe.length} pagamento(s) · ${brl(sum(pe,l=>l.valor))}</span></h3><div class="list">${pe.sort((a,b)=>dataCaixa(b).localeCompare(dataCaixa(a))).map(l=>rowHTML(l)).join('')}</div>
-  <p class="note">Para acompanhar quanto falta do empréstimo, edite um desses lançamentos e informe o total de parcelas.</p></div>`;
+  ${pe.some(l=>!l.parcela)?'<p class="note">Para acompanhar quanto falta do empréstimo, edite um desses lançamentos e informe o total de parcelas.</p>':''}</div>`;
 }
 
 /* ---------- CADASTROS ---------- */
@@ -748,7 +763,8 @@ function openForm(id, preset){
     try{
       if(ed){
         const pn=parseInt(g('#f_pn').value), pt=parseInt(g('#f_pt').value);
-        const parcela = pn&&pt? {grupo:(ed.parcela&&ed.parcela.grupo)||('g-'+Date.now().toString(36)), n:pn, total:pt} : null;
+        const parcela = pn&&pt? {grupo:(ed.parcela&&ed.parcela.grupo)||grupoExistente(l.cat,l.desc.trim(),pt,ed.id)||('g-'+Date.now().toString(36)), n:pn, total:pt} : null;
+        if(parcela){ const dup=S.lanc.find(x=>x.id!==ed.id&&x.parcela&&x.parcela.grupo===parcela.grupo&&x.parcela.n===pn); if(dup){ g('#b_save').disabled=false; return toast('A parcela '+pn+' desse parcelamento já existe ('+dmy(dup.venc)+'). Confira o número.'); } }
         const atual=S.lanc.find(x=>x.id===ed.id)||ed; const doc=Object.assign({}, stripId(atual), base, {parcela, anexos:atual.anexos||[], editadoEm:Date.now(), editadoPor:S.nome||''});
         await S.db.collection('fin_lanc').doc(ed.id).set(doc);
         toast('Lançamento atualizado.');
