@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Quem pode usar o FINANCEIRO. Troque pelos e-mails cadastrados em Authentication > Usuários.
+    function permitido() {
+      return request.auth != null
+        && request.auth.token.email in ['EMAIL_DO_CAIO@gmail.com', 'EMAIL_DO_EDILSON@gmail.com'];
+    }
+
+    // ---------- FINANCEIRO (com login) ----------
+    match /fin_lanc/{id} { allow read, write: if permitido(); }
+    match /fin_cfg/{id}  { allow read, write: if permitido(); }
+
+    // ---------- RASTREIO (sem login, funciona como hoje) ----------
+    match /cargotrack/{doc=**}             { allow read, write: if true; }
+    match /cargotrack_ctes/{doc=**}        { allow read, write: if true; }
+    match /cargotrack_eventos/{doc=**}     { allow read, write: if true; }
+    match /cargotrack_nfechaves/{doc=**}   { allow read, write: if true; }
+    match /cargotrack_obs_photos/{doc=**}  { allow read, write: if true; }
+    match /cargotrack_photos/{doc=**}      { allow read, write: if true; }
+    match /cargotrack_xmls/{doc=**}        { allow read, write: if true; }
+  }
+}

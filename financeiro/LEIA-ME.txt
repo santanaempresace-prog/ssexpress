@@ -1,0 +1,18 @@
+SS EXPRESS FINANCEIRO
+Endereço: https://santanaempresace-prog.github.io/ssexpress/financeiro/
+Usa o mesmo projeto Firebase do Rastreio (ssexpress-ab03d). Não precisa criar outro.
+
+CONFIGURAÇÃO (uma vez só, no https://console.firebase.google.com, projeto ssexpress-ab03d)
+
+1. Login: Authentication > Vamos começar > Método de login > E-mail/senha > Ativar > Salvar.
+2. Usuários: Authentication > Usuários > Adicionar usuário (você e o Edilson, com senha provisória).
+3. Domínio: Authentication > Configurações > Domínios autorizados > Adicionar domínio:
+   santanaempresace-prog.github.io
+4. Regras: Firestore Database > Regras. Copie as regras de regras-firestore.txt,
+   troque os dois e-mails e clique em Publicar.
+   IMPORTANTE: se as regras atuais tiverem um "match /{document=**}" liberando tudo,
+   ele precisa sair. Senão o financeiro fica aberto para qualquer pessoa.
+   As regras novas já mantêm o Rastreio funcionando sem login, como hoje.
+5. Abra o endereço, entre e clique em "Importar histórico da planilha" (só na primeira vez).
+
+Celular: abra o endereço e use "Adicionar à tela inicial".
