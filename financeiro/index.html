@@ -194,7 +194,7 @@ td .d2{display:block;font-size:12px;color:var(--muted)}
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(10,15,20,.55);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:40px 14px;overflow-y:auto}
 .ov[hidden]{display:none}
-.dlg{background:var(--surface);border-radius:14px;width:100%;max-width:560px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.dlg{background:var(--surface);border-radius:14px;width:100%;max-width:600px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 .dlg h2{margin-bottom:14px;display:flex;align-items:center;gap:10px}
 .dlg h2 .x{margin-left:auto;border:0;background:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -231,6 +231,11 @@ td .d2{display:block;font-size:12px;color:var(--muted)}
 .anx-add input{display:none}
 .clip{color:var(--accent-ink);font-weight:600}
 .viewer img{max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:8px}
+.ptab td,.ptab th{padding:6px 4px}
+.ptab input.in{padding:6px 6px;font-size:14px}
+.ptab td:nth-child(2) input{width:132px}.ptab td:nth-child(3) input{width:92px}
+.ptab .pill{font-size:11px;padding:2px 6px}
+@media (max-width:420px){.ptab td:nth-child(2) input{width:118px}.ptab td:nth-child(3) input{width:80px}}
 .prog{height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin:8px 0}
 .prog > div{height:100%;background:var(--good)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -390,6 +395,7 @@ const ACT = {
   drePrev:()=>{S.drePrev=!S.drePrev;render();},
   csv:copyCSV,
   gerar:e=>openGerar(e.dataset.g),
+  ajustar:e=>openAjustar(e.dataset.g),
   juntar:async e=>{ const de=e.dataset.de, para=e.dataset.para;
     const A=S.lanc.filter(l=>l.parcela&&l.parcela.grupo===para), B=S.lanc.filter(l=>l.parcela&&l.parcela.grupo===de);
     const nA=new Set(A.map(l=>l.parcela.n)); const conflito=B.filter(l=>nA.has(l.parcela.n));
@@ -650,7 +656,7 @@ function vFrota(){
       <dl class="kv"><dt>Parcelas quitadas</dt><dd>${g.pagas.length} de ${g.total}</dd><dt>${g.tipo==='E'?'Recebido':'Pago'} até agora</dt><dd>${brl(pago)}</dd><dt>Lançado e em aberto</dt><dd>${brl(aberto)}</dd><dt>Parcelas ainda não lançadas</dt><dd class="${g.futuras.length?'neg':''}">${g.futuras.length} · ~${brl(faltaV)}</dd>${prox?`<dt>Próximo vencimento</dt><dd>${dmy(prox.venc)}</dd>`:''}</dl>
       ${g.anteriores.length?`<p class="note">${g.anteriores.length===1?'A parcela '+g.anteriores[0]+' é anterior':'As parcelas '+g.anteriores.join(', ')+' são anteriores'} ao controle e fica fora da conta.</p>`:''}
       ${irmaos.length&&S.canWrite?`<div class="banner" style="margin:10px 0 0">Este parcelamento aparece duplicado. <button class="btn sm" type="button" data-act="juntar" data-de="${esc(irmaos[0].id)}" data-para="${esc(g.id)}" style="margin-left:6px">Juntar os dois</button></div>`:''}
-      ${g.futuras.length&&S.canWrite&&!irmaos.length?`<div class="acts"><button class="btn pri sm" type="button" data-act="gerar" data-g="${esc(g.id)}">Lançar as ${g.futuras.length} parcelas seguintes</button></div>`:''}</div>`;}).join('');
+      ${S.canWrite&&!irmaos.length?`<div class="acts">${g.futuras.length?`<button class="btn pri sm" type="button" data-act="gerar" data-g="${esc(g.id)}">Lançar as ${g.futuras.length} parcelas seguintes</button>`:''}<button class="btn sm" type="button" data-act="ajustar" data-g="${esc(g.id)}">Ajustar valores e datas</button></div>`:''}</div>`;}).join('');
   return `<div class="vhead"><div><h2>Frota e parcelas</h2><p>Gastos por veículo e o andamento dos parcelamentos, empréstimos e vendas a prazo.</p></div></div>
   <div class="card" style="margin-bottom:14px"><h3>Gastos de frota por veículo<span class="sub">total ${brl(sum(fro,l=>l.valor))}</span></h3>${tbl}</div>
   <h3 style="margin:20px 0 10px">Parcelamentos</h3>
@@ -930,22 +936,55 @@ function openBaixa(id){
     const doc=stripId(l); doc.pago=d; doc.conta=$('#b_conta').value; if(Math.abs(v-l.valor)>0.004){ doc.obs=((l.obs?l.obs+' · ':'')+'valor original '+brl(l.valor)); doc.valor=v; } doc.editadoEm=Date.now(); doc.editadoPor=S.nome||'';
     $('#b_ok').disabled=true; try{ doc.anexos=(S.lanc.find(x=>x.id===l.id)||l).anexos||[]; await S.db.collection('fin_lanc').doc(l.id).set(doc); if(bnovos.length){ $('#b_ok').textContent='Enviando comprovante…'; await enviarAnexos(l.id, bnovos, null); } toast(l.tipo==='E'?'Recebimento registrado.':'Pagamento registrado.'); closeDlg(); }catch(e){ handleWriteErr(e);} };
 }
+function tabelaParcelas(linhas){
+  // linhas: [{n, venc, valor, pago, id}]
+  return `<div class="tbl-wrap ptab" style="max-height:52vh;overflow-y:auto"><table><thead><tr><th>Nº</th><th>Vencimento</th><th class="v">Valor R$</th><th></th></tr></thead><tbody>
+   ${linhas.map((r,i)=>`<tr><td><b>${r.n}</b></td><td><input class="in" type="date" data-pv="${i}" value="${r.venc}"></td><td class="v"><input class="in" type="number" inputmode="decimal" step="0.01" min="0" data-pval="${i}" value="${r.valor}" style="text-align:right"></td><td>${r.pago?`<span class="pill pago">${r.tipo==='E'?'Recebida':'Paga'}</span>`:r.id?'<span class="pill aberto">Em aberto</span>':'<span class="pill">Nova</span>'}</td></tr>`).join('')}
+   </tbody></table></div>`;
+}
+function lerTabela(linhas){
+  return linhas.map((r,i)=>({...r, venc:$(`[data-pv="${i}"]`).value, valor:Math.round((parseFloat($(`[data-pval="${i}"]`).value)||0)*100)/100}));
+}
 function openGerar(gid){
   const g=grupos().find(x=>x.id===gid); if(!g) return; const last=g.ls[g.ls.length-1];
   const n=g.futuras.length;
+  let linhas=g.futuras.map((num,i)=>({n:num, venc:addMonths(last.venc,i+1), valor:last.valor, tipo:g.tipo}));
   openDlg(`<h2>Lançar parcelas seguintes<button class="x" type="button" aria-label="Fechar">×</button></h2>
-  <p style="margin-top:0"><b>${esc(g.desc)}</b>: vou criar as parcelas ${g.futuras[0]} a ${g.futuras[n-1]} de ${g.total}, uma por mês, todas em aberto.</p>
-  <div class="form"><label>Valor de cada parcela (R$)<input class="in" id="g_val" type="number" step="0.01" value="${last.valor}"></label><label>1º vencimento<input class="in" id="g_venc" type="date" value="${addMonths(last.venc,1)}"></label></div>
-  <p class="note" id="g_tot">Total: ${brl(last.valor*n)} · última parcela em ${dmy(addMonths(last.venc,n))}</p>
+  <p style="margin-top:0"><b>${esc(g.desc)}</b>: parcelas ${g.futuras[0]} a ${g.futuras[n-1]} de ${g.total}. Todas entram em aberto.</p>
+  <div class="form" style="margin-bottom:10px"><label>Mesmo valor para todas (R$)<input class="in" id="g_val" type="number" step="0.01" value="${last.valor}"></label><label>1º vencimento<input class="in" id="g_venc" type="date" value="${addMonths(last.venc,1)}"></label></div>
+  <p class="note" style="margin:0 0 6px">Se alguma parcela tem valor diferente, ajuste direto na linha dela.</p>
+  <div id="g_tab"></div>
+  <p class="note" id="g_tot"></p>
   <div class="acts"><span class="sp"></span><button class="btn" type="button" id="g_no">Cancelar</button><button class="btn pri" type="button" id="g_ok">Lançar ${n} parcelas</button></div>`);
-  const upd=()=>{ const v=parseFloat($('#g_val').value)||0; const d=$('#g_venc').value; if(d) $('#g_tot').textContent='Total: '+brl(v*n)+' · última parcela em '+dmy(addMonths(d,n-1)); };
-  $('#g_val').oninput=upd; $('#g_venc').oninput=upd;
+  const tot=()=>{ const ls=lerTabela(linhas); $('#g_tot').textContent='Total: '+brl(sum(ls,r=>r.valor))+' · última parcela em '+dmy(ls[ls.length-1].venc); };
+  const draw=()=>{ $('#g_tab').innerHTML=tabelaParcelas(linhas); $('#g_tab').querySelectorAll('input').forEach(i=>i.oninput=()=>{ linhas=lerTabela(linhas); tot(); }); tot(); };
+  draw();
+  $('#g_val').oninput=()=>{ const v=parseFloat($('#g_val').value)||0; linhas=lerTabela(linhas).map(r=>({...r,valor:v})); draw(); };
+  $('#g_venc').oninput=()=>{ const d=$('#g_venc').value; if(!d) return; linhas=lerTabela(linhas).map((r,i)=>({...r,venc:addMonths(d,i)})); draw(); };
   $('#g_no').onclick=closeDlg;
-  $('#g_ok').onclick=async()=>{ const v=Math.round(parseFloat($('#g_val').value)*100)/100; const d0=$('#g_venc').value; if(!(v>0)||!d0) return toast('Confira o valor e a data.');
+  $('#g_ok').onclick=async()=>{ const ls=lerTabela(linhas); if(ls.some(r=>!(r.valor>0)||!r.venc)) return toast('Confira: toda parcela precisa de valor e vencimento.');
     $('#g_ok').disabled=true;
-    try{ for(let i=0;i<n;i++){ const base=stripId(last); delete base.editadoEm; delete base.editadoPor; delete base.anexos;
-        await S.db.collection('fin_lanc').add(Object.assign(base,{valor:v,venc:addMonths(d0,i),pago:null,obs:'',emissao:today(),criadoEm:Date.now(),por:S.uid||'',porNome:S.nome||'',origem:'app',parcela:{grupo:g.id,n:g.futuras[i],total:g.total}})); }
-      toast(n+' parcelas lançadas.'); closeDlg(); }catch(e){ handleWriteErr(e); } };
+    try{ for(const r of ls){ const base=stripId(last); delete base.editadoEm; delete base.editadoPor; delete base.anexos;
+        await S.db.collection('fin_lanc').add(Object.assign(base,{valor:r.valor,venc:r.venc,pago:null,obs:'',emissao:today(),criadoEm:Date.now(),por:S.uid||'',porNome:S.nome||'',origem:'app',parcela:{grupo:g.id,n:r.n,total:g.total}})); }
+      toast(n+' parcelas lançadas.'); closeDlg(); }catch(e){ $('#g_ok').disabled=false; handleWriteErr(e); } };
+}
+function openAjustar(gid){
+  const g=grupos().find(x=>x.id===gid); if(!g) return;
+  const orig=g.ls.map(l=>({id:l.id, n:l.parcela.n, venc:l.venc, valor:l.valor, pago:l.pago, tipo:l.tipo}));
+  let linhas=orig.map(r=>({...r}));
+  openDlg(`<h2>Ajustar parcelas<button class="x" type="button" aria-label="Fechar">×</button></h2>
+  <p style="margin-top:0"><b>${esc(g.desc)}</b>: ${g.ls.length} parcela(s) lançada(s) de ${g.total}. Mude o valor ou o vencimento de qualquer uma.</p>
+  <div id="a_tab"></div><p class="note" id="a_tot"></p>
+  <div class="acts"><span class="sp"></span><button class="btn" type="button" id="a_no">Cancelar</button><button class="btn pri" type="button" id="a_ok">Salvar ajustes</button></div>`);
+  const tot=()=>{ const ls=lerTabela(linhas); const mud=ls.filter((r,i)=>r.valor!==orig[i].valor||r.venc!==orig[i].venc).length;
+    $('#a_tot').textContent='Total lançado: '+brl(sum(ls,r=>r.valor))+' · pago: '+brl(sum(ls.filter(r=>r.pago),r=>r.valor))+' · em aberto: '+brl(sum(ls.filter(r=>!r.pago),r=>r.valor))+(mud?' · '+mud+' alteração(ões)':''); };
+  $('#a_tab').innerHTML=tabelaParcelas(linhas); $('#a_tab').querySelectorAll('input').forEach(i=>i.oninput=()=>{ linhas=lerTabela(linhas); tot(); }); tot();
+  $('#a_no').onclick=closeDlg;
+  $('#a_ok').onclick=async()=>{ const ls=lerTabela(linhas); if(ls.some(r=>!(r.valor>0)||!r.venc)) return toast('Confira: toda parcela precisa de valor e vencimento.');
+    const mud=ls.filter((r,i)=>r.valor!==orig[i].valor||r.venc!==orig[i].venc); if(!mud.length){ closeDlg(); return; }
+    $('#a_ok').disabled=true;
+    try{ for(const r of mud) await S.db.collection('fin_lanc').doc(r.id).update({valor:r.valor, venc:r.venc, editadoEm:Date.now(), editadoPor:S.nome||''});
+      toast(mud.length+' parcela(s) ajustada(s).'); closeDlg(); }catch(e){ $('#a_ok').disabled=false; handleWriteErr(e); } };
 }
 function handleWriteErr(e){
   const c=e&&e.code;
