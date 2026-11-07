@@ -199,6 +199,8 @@ td .d2{display:block;font-size:12px;color:var(--muted)}
 .dlg h2 .x{margin-left:auto;border:0;background:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form .full{grid-column:1/-1}
+.form > *{min-width:0}
+.anx-it{min-width:0}
 .form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;color:var(--muted)}
 .form label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px}
 .form label.chk input{width:18px;height:18px}
@@ -675,12 +677,12 @@ async function saveCad(){
 
 /* ---------- formulário ---------- */
 function openDlg(html){ $('#dlg').innerHTML=html; $('#ov').hidden=false; const x=$('#dlg .x'); if(x) x.onclick=closeDlg; const f=$('#dlg input,#dlg select'); if(f) setTimeout(()=>f.focus(),30); }
-function closeDlg(){ $('#ov').hidden=true; $('#dlg').innerHTML=''; }
+function closeDlg(){ $('#ov').hidden=true; $('#dlg').innerHTML=''; PASTE_ALVO=null; }
 $('#ov').addEventListener('click',e=>{ if(e.target.id==='ov') closeDlg(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#ov').hidden) closeDlg(); });
 $('#fab').addEventListener('click',()=>openForm(null));
 
-function openForm(id){
+function openForm(id, preset){
   const ed = id? S.lanc.find(l=>l.id===id) : null;
   const l = ed? JSON.parse(JSON.stringify(ed)) : {tipo:'S',cat:'',desc:'',valor:'',venc:today(),pago:today(),forma:'PIX',conta:cfg().contas[0]&&cfg().contas[0].id,agregado:'',veiculo:'',ref:'',obs:'',parcela:null};
   const ro = !S.canWrite;
@@ -704,7 +706,7 @@ function openForm(id){
     <label class="full">Observação<textarea class="in" id="f_obs" rows="2">${esc(l.obs||'')}</textarea></label>
     <div class="full"><div style="font-size:13px;font-weight:500;color:var(--muted);margin-bottom:4px">Comprovantes</div>
       ${ed? '<div class="anx" id="anx"></div>' : '<div class="anx" id="anx_new"></div>'}
-      ${ro?'':`<label class="btn sm anx-add" style="margin-top:6px">📎 Anexar comprovante<input type="file" id="f_files" accept="image/*,application/pdf" multiple></label>`}
+      ${ro?'':`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><label class="btn sm anx-add">📎 Anexar comprovante<input type="file" id="f_files" accept="image/*,application/pdf" multiple></label><button class="btn sm" type="button" id="f_paste">📋 Colar comprovante</button></div>`}
       <p class="note" style="margin-top:4px">Foto ou PDF. No celular dá para tirar a foto na hora.</p></div>
   </form>
   <div class="acts">${ed&&!ro?'<button class="btn danger" type="button" id="b_del">Excluir</button>':''}<span class="sp"></span><button class="btn" type="button" id="b_cancel">Cancelar</button>${ro?'':`<button class="btn pri" type="button" id="b_save">${ed?'Salvar alterações':'Lançar'}</button>`}</div>
@@ -722,11 +724,14 @@ function openForm(id){
     if(g('#b_save')) g('#b_save').onclick=()=>save();
     if(g('#b_del')) g('#b_del').onclick=()=>confirmDel(ed);
     if(ro) $('#dlg').querySelectorAll('input,select,textarea,[data-tp]').forEach(e=>e.disabled=true);
+    const receber = ed ? (fs=>enviarAnexos(ed.id, fs, g('#anx'))) : (fs=>{ novos.push(...fs); listarNovos(); });
     if(ed){ renderAnx(ed.id, g('#anx')); if(g('#f_files')) g('#f_files').onchange=async ev=>{ const fs=[...ev.target.files]; ev.target.value=''; await enviarAnexos(ed.id, fs, g('#anx')); }; }
     else if(g('#f_files')){ g('#f_files').onchange=ev=>{ novos.push(...ev.target.files); ev.target.value=''; listarNovos(); }; listarNovos(); }
+    if(g('#f_paste')) g('#f_paste').onclick=async()=>{ const fs=await lerAreaTransferencia(); if(fs.length) receber(fs); };
+    PASTE_ALVO = g('#f_paste')? receber : null;
     if(ed&&g('#meta')){ if(ed.porNome&&ed.origem!=='planilha') g('#meta').textContent+=' · por '+ed.porNome; if(ed.editadoPor&&ed.editadoEm) g('#meta').textContent+=' · última alteração por '+ed.editadoPor+' em '+new Date(ed.editadoEm).toLocaleString('pt-BR'); }
   };
-  const novos=[];
+  const novos=preset?[...preset]:[];
   const listarNovos=()=>{ const box=$('#dlg #anx_new'); if(!box) return; box.innerHTML=novos.map((f,i)=>`<div class="anx-it"><div class="th">${f.type==='application/pdf'?'PDF':'FOTO'}</div><div class="nm"><b>${esc(f.name)}</b><span>${tamanhoTxt(f.size)} · será enviado ao lançar</span></div><button class="btn sm" type="button" data-rmn="${i}">Tirar</button></div>`).join(''); box.querySelectorAll('[data-rmn]').forEach(b=>b.onclick=()=>{ novos.splice(+b.dataset.rmn,1); listarNovos(); }); };
   const snapshot=()=>{ const g=s=>$('#dlg '+s); if(!g('#f_desc')) return; l.desc=g('#f_desc').value; l.cat=g('#f_cat').value; l.valor=g('#f_valor').value; l.venc=g('#f_venc').value; l.pago=g('#f_pg').checked?g('#f_pago').value:null; l.forma=g('#f_forma').value; l.conta=g('#f_conta').value; l.agregado=g('#f_agr').value; l.veiculo=g('#f_veic').value; l.ref=g('#f_ref').value; l.obs=g('#f_obs').value; };
   async function save(){
@@ -762,6 +767,52 @@ function openForm(id){
   }
   openDlg(html()); wire();
 }
+/* ---------- colar e compartilhar comprovantes ---------- */
+let PASTE_ALVO=null;
+function arquivoDeBlob(blob, base){ const ext=blob.type==='application/pdf'?'pdf':(blob.type.split('/')[1]||'png'); return new File([blob], (base||'comprovante-whatsapp')+'-'+new Date().toISOString().slice(0,16).replace(/[-:T]/g,'')+'.'+ext, {type:blob.type}); }
+async function lerAreaTransferencia(){
+  if(!navigator.clipboard||!navigator.clipboard.read){ toast('Este celular não deixa colar por botão. Use “Anexar comprovante” ou compartilhe do WhatsApp.'); return []; }
+  try{
+    const itens=await navigator.clipboard.read(); const out=[];
+    for(const it of itens){ const t=it.types.find(x=>x.startsWith('image/')||x==='application/pdf'); if(t) out.push(arquivoDeBlob(await it.getType(t))); }
+    if(!out.length) toast('Não há imagem copiada. No WhatsApp, abra o comprovante, toque nos ⋮ e use Compartilhar → SS Financeiro.');
+    return out;
+  }catch(e){ toast('Não consegui ler o que foi copiado. Permita o acesso à área de transferência ou use Compartilhar do WhatsApp.'); return []; }
+}
+document.addEventListener('paste', ev=>{
+  const fs=[...((ev.clipboardData&&ev.clipboardData.files)||[])].filter(f=>f.type.startsWith('image/')||f.type==='application/pdf');
+  if(!fs.length||!S.canWrite||!S.loaded) return;
+  ev.preventDefault();
+  const arqs=fs.map(f=>f.name&&f.name!=='image.png'?f:arquivoDeBlob(f));
+  if(PASTE_ALVO) PASTE_ALVO(arqs); else escolherLancamento(arqs);
+});
+async function lerCompartilhados(){
+  try{ const c=await caches.open('ss-compartilhados'); const ks=await c.keys(); const out=[];
+    for(const k of ks){ const r=await c.match(k); const b=await r.blob(); out.push(new File([b], decodeURIComponent(r.headers.get('x-nome')||'comprovante'), {type:b.type||r.headers.get('content-type')||''})); await c.delete(k); }
+    return out; }catch(_){ return []; }
+}
+function escolherLancamento(files){
+  if(!files.length) return;
+  if(!S.canWrite){ toast('Seu acesso é só para consulta.'); return; }
+  const hoje=today();
+  const abertos=S.lanc.filter(l=>!l.pago).sort((a,b)=>a.venc.localeCompare(b.venc));
+  const recentes=S.lanc.filter(l=>l.pago).sort((a,b)=>dataCaixa(b).localeCompare(dataCaixa(a))||(b.criadoEm||0)-(a.criadoEm||0));
+  const item=l=>`<div class="row click" data-pick="${l.id}"><div class="dt">${dataCaixa(l).slice(8,10)}<small>${MESES[+dataCaixa(l).slice(5,7)-1]}</small></div><div class="ds"><b>${esc(l.desc)}</b><span>${esc((CAT[l.cat]||{}).nome||'')}${l.anexos&&l.anexos.length?' · 📎 '+l.anexos.length:''}</span></div><div class="vl"><div class="${l.tipo==='E'?'pos':''}">${l.tipo==='E'?'+':'−'} ${brl(l.valor)}</div><span class="pill ${status(l).k}">${status(l).t}</span></div></div>`;
+  const desenhar=q=>{ q=(q||'').toLowerCase(); const f=l=>!q||(l.desc+' '+((CAT[l.cat]||{}).nome||'')+' '+brl(l.valor)).toLowerCase().includes(q);
+    const a=abertos.filter(f), r=recentes.filter(f).slice(0,40);
+    $('#pk_list').innerHTML=(a.length?`<div class="mhead" style="font-size:16px">Em aberto<span>${a.length}</span></div>`+a.map(item).join(''):'')+(r.length?`<div class="mhead" style="font-size:16px">Pagos e recebidos recentes<span></span></div>`+r.map(item).join(''):'')+(!a.length&&!r.length?'<div class="empty">Nenhum lançamento encontrado.</div>':'');
+    $('#pk_list').querySelectorAll('[data-pick]').forEach(el=>el.onclick=async()=>{ const id=el.dataset.pick; $('#pk_list').innerHTML='<div class="empty">Enviando comprovante…</div>'; await enviarAnexos(id, files, null); openForm(id); }); };
+  openDlg(`<h2>Comprovante recebido<button class="x" type="button" aria-label="Fechar">×</button></h2>
+   <div class="anx" style="margin-bottom:10px">${files.map(f=>`<div class="anx-it"><div class="th">${f.type==='application/pdf'?'PDF':'FOTO'}</div><div class="nm"><b>${esc(f.name)}</b><span>${tamanhoTxt(f.size)}</span></div></div>`).join('')}</div>
+   <button class="btn pri" type="button" id="pk_new" style="width:100%;justify-content:center">+ Criar lançamento novo com este comprovante</button>
+   <p style="margin:14px 0 6px;font-weight:600">Ou escolha o lançamento:</p>
+   <input class="in" id="pk_q" placeholder="Buscar: Bonfim, Simples, 8.750…">
+   <div class="list" id="pk_list" style="max-height:52vh;overflow-y:auto;margin-top:6px"></div>`);
+  $('#pk_new').onclick=()=>openForm(null, files);
+  $('#pk_q').oninput=e=>desenhar(e.target.value);
+  desenhar('');
+}
+
 /* ---------- comprovantes ---------- */
 const PARTE=700000; const MAX_PDF=5*1024*1024;
 function tamanhoTxt(b){ return b>=1048576? (b/1048576).toLocaleString('pt-BR',{maximumFractionDigits:1})+' MB' : Math.max(1,Math.round(b/1024))+' KB'; }
@@ -851,10 +902,13 @@ function openBaixa(id){
   <div class="form"><label>Data<input class="in" id="b_data" type="date" value="${today()}"></label><label>Valor efetivo (R$)<input class="in" id="b_val" type="number" step="0.01" value="${l.valor}"></label>
   <label class="full">Conta<select class="in" id="b_conta">${cfg().contas.map(c=>`<option value="${c.id}" ${c.id===l.conta?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></label></div>
   <p class="note">Se houve juros, multa ou desconto, ajuste o valor efetivo. O valor original fica guardado na observação.</p>
-  <div style="margin-top:12px"><label class="btn sm anx-add">📎 Anexar comprovante<input type="file" id="b_files" accept="image/*,application/pdf" multiple></label><div class="anx" id="b_anx" style="margin-top:6px"></div></div>
+  <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><label class="btn sm anx-add">📎 Anexar comprovante<input type="file" id="b_files" accept="image/*,application/pdf" multiple></label><button class="btn sm" type="button" id="b_paste">📋 Colar comprovante</button></div><div><div class="anx" id="b_anx" style="margin-top:6px"></div></div>
   <div class="acts"><span class="sp"></span><button class="btn" type="button" id="b_no">Cancelar</button><button class="btn pri" type="button" id="b_ok">Confirmar</button></div>`);
   const bnovos=[]; const blist=()=>{ $('#b_anx').innerHTML=bnovos.map(f=>`<div class="anx-it"><div class="th">${f.type==='application/pdf'?'PDF':'FOTO'}</div><div class="nm"><b>${esc(f.name)}</b><span>${tamanhoTxt(f.size)}</span></div></div>`).join(''); };
   $('#b_files').onchange=ev=>{ bnovos.push(...ev.target.files); ev.target.value=''; blist(); };
+  const breceber=fs=>{ bnovos.push(...fs); blist(); };
+  $('#b_paste').onclick=async()=>{ const fs=await lerAreaTransferencia(); if(fs.length) breceber(fs); };
+  PASTE_ALVO=breceber;
   $('#b_no').onclick=closeDlg;
   $('#b_ok').onclick=async()=>{ const v=Math.round(parseFloat($('#b_val').value)*100)/100; const d=$('#b_data').value; if(!(v>0)||!d) return toast('Confira a data e o valor.');
     const doc=stripId(l); doc.pago=d; doc.conta=$('#b_conta').value; if(Math.abs(v-l.valor)>0.004){ doc.obs=((l.obs?l.obs+' · ':'')+'valor original '+brl(l.valor)); doc.valor=v; } doc.editadoEm=Date.now(); doc.editadoPor=S.nome||'';
@@ -930,7 +984,7 @@ function start(){
     const eds=(window.EDITORES||[]).map(x=>String(x).toLowerCase()); S.canWrite = !eds.length || eds.includes(String(user.email||'').toLowerCase()); S.leitura=!S.canWrite; renderNav(); render();
     const timer=setTimeout(()=>{ if(!S.loaded){ S.loadMsg='Os dados ainda não chegaram. Confira a internet; o app continua tentando sozinho.'; setSync('err','Sem conexão'); render(); } },10000);
     let gotCfg=false, gotLanc=false, failed=false;
-    const ready=()=>{ if(gotCfg&&gotLanc&&!failed){ S.loaded=true; render(); } };
+    const ready=()=>{ if(gotCfg&&gotLanc&&!failed){ S.loaded=true; render(); if(/[?&]compartilhado=1/.test(location.search)){ history.replaceState(null,'',location.pathname+location.hash); lerCompartilhados().then(fs=>{ if(fs.length) escolherLancamento(fs); else toast('Não recebi o arquivo. Tente compartilhar de novo.'); }); } } };
     function onErr(e){ failed=true; clearTimeout(timer); setSync('err','Sem acesso');
       const msg = (e&&e.code==='permission-denied') ? 'O e-mail '+esc(user.email)+' entrou, mas não tem permissão para ver os dados. Inclua esse e-mail nas regras do Firestore (veja o LEIA-ME da pasta financeiro) e recarregue a página.' : 'Não consegui ler os dados ('+esc(e&&e.code||'erro')+'). Recarregue a página mais tarde.';
       $('#fab').hidden=true; $('#main').innerHTML='<div class="card empty" style="max-width:620px;margin:6vh auto 0">'+msg+'</div>'; }
@@ -943,6 +997,7 @@ function start(){
   });
 }
 start();
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
 })();
 </script>
 </body>
